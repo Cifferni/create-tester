@@ -8,7 +8,8 @@ import { program } from 'commander';
 import prompts from 'prompts';
 
 const ENGINE_NAME = 'tester-runtime';
-const ENGINE_VERSION = '^0.1.0';
+const ENGINE_VERSION = '^0.3.0';
+const PLAYWRIGHT_TEST_VERSION = '^1.49.1';
 
 const BROWSER_CHOICES = [
   { title: 'Chromium — Playwright 内置,自动下载(推荐)', value: 'chromium' },
@@ -78,7 +79,7 @@ async function main(opts: Options): Promise<void> {
   const templateDir = path.join(__dirname, '..', 'template');
   copyTemplate(templateDir, target);
   writePackageJson(target, name, browser, extras);
-  setConfigBrowser(target, browser);
+  setBrowser(target, browser);
 
   console.log(`[create-tester] 已创建测试项目:${target}`);
   console.log(`[create-tester] 主浏览器:${browser}${browser === 'chrome' ? '(系统 Chrome,免下载)' : ''}`);
@@ -91,29 +92,36 @@ async function main(opts: Options): Promise<void> {
     await new Promise((resolve) => child.on('close', resolve));
     console.log('[create-tester] 安装完成,可以直接用了:');
     console.log('  cd ' + target);
-    console.log('  npm run capture     # 抓包助手(半自动)');
-    console.log('  npm run run         # 全自动跑用例(先改 tester.config.ts 和 cases/)');
+    console.log('  npm run test  # 跑回归(playwright test)');
+    console.log('  在 AI harness(Codex/opencode 等)里配置 MCP,用 "npx tester-runtime mcp" 启动,由 AI 读取 cases/、写用例、判失败');
   } else {
     console.log('  接下来:');
     console.log('  cd ' + target);
     console.log('  npm install');
-    console.log('  npm run capture     # 抓包助手(半自动)');
-    console.log('  npm run run         # 全自动跑用例(先改 tester.config.ts 和 cases/)');
+    console.log('  npm run test  # 跑回归(playwright test)');
+    console.log('  在 AI harness 里配置 MCP(启动命令 npx tester-runtime mcp),AI 会自动读取 cases/ 生成用例并跑测试');
   }
 }
 
 function copyTemplate(templateDir: string, target: string): void {
   fs.cpSync(templateDir, target, { recursive: true });
+  // npm 打包会排除 .gitignore,发布包里用 _gitignore,创建项目时转回并清理
+  const gitignore = path.join(target, '.gitignore');
+  if (!fs.existsSync(gitignore)) {
+    fs.copyFileSync(path.join(templateDir, '_gitignore'), gitignore);
+  }
+  const stale = path.join(target, '_gitignore');
+  if (fs.existsSync(stale)) fs.unlinkSync(stale);
 }
 
 function writePackageJson(target: string, name: string, browser: string, extras: string[]): void {
   const pkgName = sanitizeName(name);
   const browsers = [browser, ...extras].filter((x) => x !== 'chrome');
   const scripts: Record<string, string> = {
-    capture: 'tester capture',
+    test: 'playwright test',
+    'test:headed': 'playwright test --headed',
     run: 'tester run',
-    'run:headed': 'tester run --headed',
-    judge: 'tester judge'
+    mcp: 'tester mcp'
   };
   if (browsers.length) {
     scripts.postinstall = `tester install-browsers ${browsers.join(' ')}`;
@@ -123,15 +131,20 @@ function writePackageJson(target: string, name: string, browser: string, extras:
     version: '0.1.0',
     private: true,
     scripts,
-    devDependencies: { [ENGINE_NAME]: ENGINE_VERSION }
+    devDependencies: {
+      [ENGINE_NAME]: ENGINE_VERSION,
+      '@playwright/test': PLAYWRIGHT_TEST_VERSION
+    }
   };
   fs.writeFileSync(path.join(target, 'package.json'), JSON.stringify(pkg, null, 2) + '\n', 'utf8');
 }
 
-function setConfigBrowser(target: string, browser: string): void {
-  const file = path.join(target, 'tester.config.ts');
+function setBrowser(target: string, browser: string): void {
+  const file = path.join(target, 'playwright.config.ts');
   if (fs.existsSync(file)) {
-    const text = fs.readFileSync(file, 'utf8').replace(/browser:\s*'chromium'/, `browser: '${browser}'`);
+    const text = fs
+      .readFileSync(file, 'utf8')
+      .replace(/TESTER_BROWSER \|\| 'chromium'/, `TESTER_BROWSER || '${browser}'`);
     fs.writeFileSync(file, text, 'utf8');
   }
 }
