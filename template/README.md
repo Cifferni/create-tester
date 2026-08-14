@@ -1,6 +1,6 @@
 # 测试项目
 
-基于 [tester-core](https://www.npmjs.com/package/tester-core) 的页面测试 + 接口返回校验项目。
+基于 [tester-runtime](https://www.npmjs.com/package/tester-runtime) 的页面测试 + 接口返回校验项目。
 
 ## 快速开始
 

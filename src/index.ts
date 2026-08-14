@@ -7,7 +7,7 @@ import { spawn } from 'child_process';
 import { program } from 'commander';
 import prompts from 'prompts';
 
-const ENGINE_NAME = 'tester-core';
+const ENGINE_NAME = 'tester-runtime';
 const ENGINE_VERSION = '^0.1.0';
 
 const BROWSER_CHOICES = [
