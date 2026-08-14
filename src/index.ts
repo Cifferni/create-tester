@@ -92,13 +92,13 @@ async function main(opts: Options): Promise<void> {
     console.log('[create-tester] 安装完成,可以直接用了:');
     console.log('  cd ' + target);
     console.log('  npm run capture     # 抓包助手(半自动)');
-    console.log('  npm run run         # 全自动跑用例(先改 config.ts 和 cases/)');
+    console.log('  npm run run         # 全自动跑用例(先改 tester.config.ts 和 cases/)');
   } else {
     console.log('  接下来:');
     console.log('  cd ' + target);
     console.log('  npm install');
     console.log('  npm run capture     # 抓包助手(半自动)');
-    console.log('  npm run run         # 全自动跑用例(先改 config.ts 和 cases/)');
+    console.log('  npm run run         # 全自动跑用例(先改 tester.config.ts 和 cases/)');
   }
 }
 
@@ -129,7 +129,7 @@ function writePackageJson(target: string, name: string, browser: string, extras:
 }
 
 function setConfigBrowser(target: string, browser: string): void {
-  const file = path.join(target, 'config.ts');
+  const file = path.join(target, 'tester.config.ts');
   if (fs.existsSync(file)) {
     const text = fs.readFileSync(file, 'utf8').replace(/browser:\s*'chromium'/, `browser: '${browser}'`);
     fs.writeFileSync(file, text, 'utf8');

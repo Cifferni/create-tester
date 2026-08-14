@@ -15,7 +15,7 @@ npm run judge            # 对抓包记录跑规则 + 生成 AI 初判提示
 
 ```
 cases/*.yaml   用例(写用例的地方)
-config.ts      被测地址 + 浏览器 + 判断规则 + AI 配置
+tester.config.ts      被测地址 + 浏览器 + 判断规则 + AI 配置
 reports/       运行报告(自动生成)
 data/          抓包记录、截图(自动生成)
 ```

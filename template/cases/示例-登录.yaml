@@ -16,7 +16,7 @@
 
 用例: 登录成功
 优先级: P0
-# 被测页面地址(不写则用 config.ts 里的 url)
+# 被测页面地址(不写则用 tester.config.ts 里的 url)
 url: http://localhost:3000/login
 # 前置条件(说明,供阅读;可在这里写需要造的数据)
 前置: 存在测试账号 test01 / 123456
