@@ -83,7 +83,7 @@ async function main(opts: Options): Promise<void> {
   console.log(`[create-tester] 已创建测试项目:${target}`);
   console.log(`[create-tester] 主浏览器:${browser}${browser === 'chrome' ? '(系统 Chrome,免下载)' : ''}`);
   if (extras.length) console.log(`[create-tester] 额外浏览器:${extras.join(', ')}`);
-  console.log('[create-tester] 引擎 tester-runner 会随 npm install 自动安装,浏览器自动下载');
+  console.log(`[create-tester] 引擎 ${ENGINE_NAME} 会随 npm install 自动安装,浏览器自动下载`);
 
   if (opts.install !== false) {
     console.log('[create-tester] 正在 npm install(首次会下载引擎与浏览器,请稍候)…');
