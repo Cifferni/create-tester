@@ -1,6 +1,6 @@
 {
   "name": "create-tester",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "创建 tester 测试项目(脚手架 CLI,仅用于建项目)",
   "license": "MIT",
   "engines": {
