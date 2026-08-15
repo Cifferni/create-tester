@@ -9,7 +9,7 @@
   1. 在工程根目录(命令窗口)跑一次 `npm run mcp`
   2. 它会启动 MCP 并在窗口里打印一行"连接配置"(一段 JSON)
   3. 把这段 JSON 按 AI 工具的说明贴给它(或让维护者处理)
-- **怎么确认连上了**:AI 的工具体列表里能看到两套工具——`tester` 的测试工程工具(`run_tests` / `failures` / `status` / `convert_case` 等)和 `playwright` 的页面操作工具(`browser_snapshot` / `browser_click` 等)。
+- **怎么确认连上了**:AI 的工具体列表里能看到两套工具——`tester` 的测试工程工具(`tester_run_tests` / `tester_failures` / `tester_status` / `tester_convert_case` 等)和 `playwright` 的页面操作工具(`browser_snapshot` / `browser_click` 等)。
 - 只跑回归(`npm run test`)不需要 MCP。
 
 ## 一、你只需要做三件事

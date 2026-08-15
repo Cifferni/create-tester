@@ -2,9 +2,9 @@
 // 本 server 只暴露"测试工程专属工具"(用例读取/生成/跑测/报告/登录/env),AI 编排靠两套 server 配合。
 //   list_cases      列出 test-cases/ 下的用例文件
 //   convert_case    test-cases/ 用例文件(xlsx/xmind/md/csv/txt)→ 结构化文本
-//   generate_spec   用例 → spec 骨架
-//   run_tests       跑 Playwright 测试(后台),status/failures 轮询
-//   failures/status 读报告,返回失败详情/总览(供 harness 判断根因)
+//   tester_generate_spec   用例 → spec 骨架
+//   tester_run_tests       跑 Playwright 测试(后台),tester_status/tester_failures 轮询
+//   tester_failures/tester_status 读报告,返回失败详情/总览(供 harness 判断根因)
 // 启动: tester mcp (stdio transport,由 harness 以子进程方式拉起)
 // 注意:snapshot/inspect 等页面操作不再自研——用官方 @playwright/mcp 的 browser_snapshot/browser_find。
 
@@ -85,7 +85,7 @@ function runMCP(): void {
   const plugins = loadPlugins(root);
 
   server.tool(
-    'list_cases',
+    'tester_list_cases',
     '列出 test-cases/ 目录下的测试用例文件',
     {},
     () => {
@@ -95,7 +95,7 @@ function runMCP(): void {
   );
 
   server.tool(
-    'convert_case',
+    'tester_convert_case',
     '把 test-cases/ 下的用例文件(xlsx/xmind/csv/md/txt)转成结构化文本;能识别"步骤/预期"列的表格会输出【前置/操作/预期/数据】。写 spec 时操作从"操作"来、断言从"预期"来,页面现状不等于预期。自定义格式可由 plugin/ 的用例解析器插件扩展',
     { file: z.string().describe('test-cases/ 下的文件路径,如 test-cases/登录.xlsx') },
     ({ file }) => {
@@ -115,7 +115,7 @@ function runMCP(): void {
   );
 
   server.tool(
-    'set_base_url',
+    'tester_set_base_url',
     '设置被测页面地址:改写 playwright.config.ts 的 baseURL。测试人员在对话里说被测地址时调用,不需要测试人员改文件。环境变量 BASE_URL 优先,会覆盖这里',
     { url: z.string().describe('被测页面地址,如 http://localhost:5173') },
     ({ url }) => {
@@ -126,12 +126,12 @@ function runMCP(): void {
       if (!re.test(text)) return textResult('未找到 baseURL 配置(playwright.config.ts 格式不匹配),请手动检查');
       const updated = text.replace(re, `baseURL: process.env.BASE_URL || '${url}'`);
       fs.writeFileSync(cfgFile, updated, 'utf8');
-      return textResult(`已把被测地址设为 ${url}(playwright.config.ts 的 baseURL)\n若设置了环境变量 BASE_URL 则优先于它;下次 run_tests 生效`);
+      return textResult(`已把被测地址设为 ${url}(playwright.config.ts 的 baseURL)\n若设置了环境变量 BASE_URL 则优先于它;下次 tester_run_tests 生效`);
     }
   );
 
   server.tool(
-    'env_reset',
+    'tester_env_reset',
     '执行工程内的环境清理脚本(mcp/env-reset.cjs),还原被测环境(删测试数据/还原状态),保证回归可复跑。脚本由 AI 按被测应用实现;跑会改数据的回归前建议先调它',
     {},
     () => {
@@ -152,8 +152,8 @@ function runMCP(): void {
   );
 
   server.tool(
-    'login',
-    '后台打开带界面浏览器做人工登录(验证码/短信场景):返回后请在浏览器里完成登录并关掉,再用 login_status 确认。无验证码时 auth.setup 会自动登录,一般不需要这个。多账号用 TESTER_ACCOUNT 环境变量区分(缺省 default)',
+    'tester_login',
+    '后台打开带界面浏览器做人工登录(验证码/短信场景):返回后请在浏览器里完成登录并关掉,再用 tester_login_status 确认。无验证码时 auth.setup 会自动登录,一般不需要这个。多账号用 TESTER_ACCOUNT 环境变量区分(缺省 default)',
     {},
     () => {
       const root = projectRoot();
@@ -168,12 +168,12 @@ function runMCP(): void {
         { cwd: root, detached: true, stdio: 'ignore', windowsHide: true, shell: true }
       );
       child.unref();
-      return textResult(`已在后台打开浏览器:${baseURL}\n请测试人员在浏览器里完成登录(输验证码/短信),然后关掉浏览器。\n之后用 login_status 确认登录态已保存。`);
+      return textResult(`已在后台打开浏览器:${baseURL}\n请测试人员在浏览器里完成登录(输验证码/短信),然后关掉浏览器。\n之后用 tester_login_status 确认登录态已保存。`);
     }
   );
 
   server.tool(
-    'login_status',
+    'tester_login_status',
     `检查人工登录是否完成(test-result/${authFileName()} 是否已生成)`,
     {},
     () => {
@@ -187,7 +187,7 @@ function runMCP(): void {
   );
 
   server.tool(
-    'list_specs',
+    'tester_list_specs',
     '列出 tests/ 目录下已生成的可执行用例(Playwright spec)',
     {},
     () => {
@@ -197,8 +197,8 @@ function runMCP(): void {
   );
 
   server.tool(
-    'run_tests',
-    '后台运行 Playwright 测试(默认 tests/ 全部),立即返回"运行中",跑完用 status/failures 轮询结果。注意:不提供同步等待——客户端 MCP 有请求超时,同步等待大测试必断。文件参数传相对路径,如 tests/login/登录.spec.ts。跑前自动用 esbuild 做语法预检,有语法错误的 spec 直接列出、不会启动测试。可用 grep 按标签/标题筛选(如 @smoke、登录)',
+    'tester_run_tests',
+    '后台运行 Playwright 测试(默认 tests/ 全部),立即返回"运行中",跑完用 tester_status/tester_failures 轮询结果。注意:不提供同步等待——客户端 MCP 有请求超时,同步等待大测试必断。文件参数传相对路径,如 tests/login/登录.spec.ts。跑前自动用 esbuild 做语法预检,有语法错误的 spec 直接列出、不会启动测试。可用 grep 按标签/标题筛选(如 @smoke、登录)',
     {
       files: z.array(z.string()).optional().describe('要跑的 spec 文件列表,缺省跑全部'),
       headed: z.boolean().optional().describe('是否带界面执行,默认无头'),
@@ -220,7 +220,7 @@ function runMCP(): void {
           `以下 spec 存在语法错误,已停止运行(请先修复再跑):\n\n${syntaxIssues.join('\n\n')}`
         );
       }
-      // 清掉旧报告:让 status/failures 的"未找到报告"能区分"还在跑"
+      // 清掉旧报告:让 tester_status/tester_failures 的"未找到报告"能区分"还在跑"
       try {
         fs.rmSync(path.join(root, 'test-result', 'test-results.json'), { force: true });
       } catch {
@@ -229,7 +229,7 @@ function runMCP(): void {
       const { pid } = startPlaywrightTest(list, root, { headed, workers, grep });
       return textResult(
         JSON.stringify(
-          { status: 'running', pid, grep: grep || undefined, note: '测试在后台运行,用 status/failures 轮询结果(未找到报告=仍在跑)' },
+          { status: 'running', pid, grep: grep || undefined, note: '测试在后台运行,用 tester_status/tester_failures 轮询结果(未找到报告=仍在跑)' },
           null,
           2
         )
@@ -238,7 +238,7 @@ function runMCP(): void {
   );
 
   server.tool(
-    'failures',
+    'tester_failures',
     '读取 test-result/test-results.json 报告,返回整轮全貌 {total,passed,skipped,failed} + 失败用例详情(含错误分类[定位/断言/网络/超时/脚本/其他]、错误信息与 stdout/stderr 日志)。报告未生成说明仍在跑,应稍后轮询',
     { file: z.string().optional().describe('JSON 报告路径,默认 test-result/test-results.json') },
     ({ file }) => {
@@ -271,7 +271,7 @@ function runMCP(): void {
   );
 
   server.tool(
-    'status',
+    'tester_status',
     '读取 test-result/test-results.json 报告,返回通过/失败/跳过/耗时总览(供 AI 一眼看清整轮结果)',
     { file: z.string().optional().describe('JSON 报告路径,默认 test-result/test-results.json') },
     ({ file }) => {
@@ -296,8 +296,8 @@ function runMCP(): void {
   );
 
   server.tool(
-    'retry_failed',
-    '后台重跑上一次报告中的失败用例(只重跑失败的 spec,不做全量),立即返回"运行中",用 status/failures 轮询。不做同步等待(客户端 MCP 有请求超时)。跑前同样做 esbuild 语法预检。可用 grep 只重跑匹配标签/标题的失败用例',
+    'tester_retry_failed',
+    '后台重跑上一次报告中的失败用例(只重跑失败的 spec,不做全量),立即返回"运行中",用 tester_status/tester_failures 轮询。不做同步等待(客户端 MCP 有请求超时)。跑前同样做 esbuild 语法预检。可用 grep 只重跑匹配标签/标题的失败用例',
     {
       headed: z.boolean().optional().describe('是否带界面执行,默认无头'),
       workers: z.number().optional().describe('并行 worker 数,缺省用 config;提速用(需用例隔离)'),
@@ -305,7 +305,7 @@ function runMCP(): void {
     },
     async ({ headed, workers, grep }) => {
       const report = path.join(projectRoot(), 'test-result', 'test-results.json');
-      if (!fs.existsSync(report)) return textResult('未找到上次报告:test-result/test-results.json(先跑一次 run_tests)');
+      if (!fs.existsSync(report)) return textResult('未找到上次报告:test-result/test-results.json(先跑一次 tester_run_tests)');
       const files = failedSpecFiles(fs.readFileSync(report, 'utf8'));
       if (!files.length) return textResult('上次报告中没有失败用例,无需重跑');
       const syntaxIssues: string[] = [];
@@ -322,7 +322,7 @@ function runMCP(): void {
       const { pid } = startPlaywrightTest(files, projectRoot(), { headed, workers, grep });
       return textResult(
         JSON.stringify(
-          { status: 'running', pid, reran: files.length, grep: grep || undefined, note: '只重跑上次失败的 spec,用 status/failures 轮询' },
+          { status: 'running', pid, reran: files.length, grep: grep || undefined, note: '只重跑上次失败的 spec,用 tester_status/tester_failures 轮询' },
           null,
           2
         )
@@ -331,7 +331,7 @@ function runMCP(): void {
   );
 
   server.tool(
-    'generate_spec',
+    'tester_generate_spec',
     '根据 test-cases/ 下的用例文件生成一个 Playwright spec 骨架(含 apiRecorder/断言模板),写到 tests/<feature>/。AI 再用官方 browser_snapshot 看页面结构补选择器,然后 run_tests',
     {
       case: z.string().describe('test-cases/ 下的用例文件,如 test-cases/登录.xlsx'),
@@ -368,7 +368,7 @@ ${guide}
 // 2. 断言依据 = 用例文档的"预期"列,不是页面现状;页面与预期不符时报告,不要改断言迁就页面。
 // 3. 需要登录时:import { ensureLoggedIn } from '../../_login'; 用例开头 await ensureLoggedIn(page);
 // 4. 禁止 page.waitForTimeout(硬编码延时):要等就用 waitForVisible/waitForClickable/waitForText/waitForURL,等状态不等时间。
-// 5. 标签分组:按需加 tag 供选择性执行,如 test('标题', { tag: ['@smoke'] }, ...);跑时 run_tests {grep: '@smoke'} 只跑冒烟。
+// 5. 标签分组:按需加 tag 供选择性执行,如 test('标题', { tag: ['@smoke'] }, ...);跑时 tester_run_tests {grep: '@smoke'} 只跑冒烟。
 
 test('${firstMeaningfulLine(text) || base}', async ({ page }) => {
   const api = apiRecorder(page);

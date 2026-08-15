@@ -110,22 +110,22 @@ test('登录成功', async ({ page }) => {
 **playwright(官方 @playwright/mcp)—— 浏览器原子操作**
 `browser_snapshot`(看页面结构)、`browser_find`(搜文本定位)、`browser_click`/`browser_type`/`browser_navigate`/`browser_expect`(操作与断言)、`browser_network_requests`(抓接口)、`browser_route`(mock 请求)等,iframe/shadowDOM/遮挡/等待由官方维护。
 
-**tester(自研)—— 测试领域上层能力**
+**tester(自研)—— 测试领域上层能力**(工具统一 `tester_*` 前缀,规避平铺展示时的命名冲突)
 
 | 工具 | 说明 |
 | --- | --- |
-| `list_cases` | 列出 `test-cases/` 下的用例文件 |
-| `convert_case` | 用例文件(xlsx/xmind/csv/md/txt)→ 结构化文本(识别前置/操作/预期/数据列;支持 plugin/ 自定义解析器) |
-| `set_base_url` | 测试人员对话里说被测地址,AI 改 config(不用测试人员碰文件) |
-| `login` | 后台弹浏览器人工登录(验证码场景),配合 `login_status` |
-| `login_status` | 检查人工登录是否完成(auth-<account>.json 是否生成) |
-| `list_specs` | 列出 `tests/` 下已生成的 spec |
-| `run_tests` | 后台跑测试,立即返回"运行中",用 `status`/`failures` 轮询;支持 `{workers:N}` 并行、`{grep:'@smoke'}` 按标签筛选;跑前 esbuild 语法预检 |
-| `status` | 读报告,返回通过/失败/跳过/耗时总览 |
-| `failures` | 读报告,返回全貌 + 失败详情(含**错误分类**定位/断言/网络/超时/脚本/其他 + stdout/stderr) |
-| `retry_failed` | 只重跑上次失败的 spec(支持 grep 筛选) |
-| `generate_spec` | 按 test-cases/ 用例生成 spec 骨架(含 apiRecorder + 业务断言模板) |
-| `env_reset` | 执行工程 `mcp/env-reset.cjs` 还原环境(跑会改数据的回归前调用) |
+| `tester_list_cases` | 列出 `test-cases/` 下的用例文件 |
+| `tester_convert_case` | 用例文件(xlsx/xmind/csv/md/txt)→ 结构化文本(识别前置/操作/预期/数据列;支持 plugin/ 自定义解析器) |
+| `tester_set_base_url` | 测试人员对话里说被测地址,AI 改 config(不用测试人员碰文件) |
+| `tester_login` | 后台弹浏览器人工登录(验证码场景),配合 `tester_login_status` |
+| `tester_login_status` | 检查人工登录是否完成(auth-<account>.json 是否生成) |
+| `tester_list_specs` | 列出 `tests/` 下已生成的 spec |
+| `tester_run_tests` | 后台跑测试,立即返回"运行中",用 `tester_status`/`tester_failures` 轮询;支持 `{workers:N}` 并行、`{grep:'@smoke'}` 按标签筛选;跑前 esbuild 语法预检 |
+| `tester_status` | 读报告,返回通过/失败/跳过/耗时总览 |
+| `tester_failures` | 读报告,返回全貌 + 失败详情(含**错误分类**定位/断言/网络/超时/脚本/其他 + stdout/stderr) |
+| `tester_retry_failed` | 只重跑上次失败的 spec(支持 grep 筛选) |
+| `tester_generate_spec` | 按 test-cases/ 用例生成 spec 骨架(含 apiRecorder + 业务断言模板) |
+| `tester_env_reset` | 执行工程 `mcp/env-reset.cjs` 还原环境(跑会改数据的回归前调用) |
 
 ## 生成的测试项目
 

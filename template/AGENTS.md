@@ -13,14 +13,14 @@
 
 | 工具 | 作用 |
 | --- | --- |
-| `list_cases` / `convert_case` | 读 `test-cases/` 用例(xlsx/xmind/csv/md/txt → 文本) |
-| `set_base_url` | 改被测地址(写 playwright.config.ts) |
-| `login` / `login_status` | 验证码人工登录 / 确认登录态 |
-| `list_specs` | 列 `tests/` spec |
-| `run_tests` / `retry_failed` | 后台跑全部 / 只重跑失败的;都支持 `grep` 按标签/标题筛选(如 {grep: '@smoke'}) |
-| `status` / `failures` | 结果总览 / 失败详情(含 stdout/stderr) |
-| `generate_spec` | 用例 → spec 骨架 |
-| `env_reset` | 还原环境(跑会改数据的回归前调) |
+| `tester_list_cases` / `tester_convert_case` | 读 `test-cases/` 用例(xlsx/xmind/csv/md/txt → 文本) |
+| `tester_set_base_url` | 改被测地址(写 playwright.config.ts) |
+| `tester_login` / `tester_login_status` | 验证码人工登录 / 确认登录态 |
+| `tester_list_specs` | 列 `tests/` spec |
+| `tester_run_tests` / `tester_retry_failed` | 后台跑全部 / 只重跑失败的;都支持 `grep` 按标签/标题筛选(如 {grep: '@smoke'}) |
+| `tester_status` / `tester_failures` | 结果总览 / 失败详情(含 stdout/stderr) |
+| `tester_generate_spec` | 用例 → spec 骨架 |
+| `tester_env_reset` | 还原环境(跑会改数据的回归前调) |
 
 ### 官方 playwright MCP(browser_* 页面操作)
 
@@ -28,12 +28,12 @@
 
 ## 流程
 
-`convert_case` 读用例 → `browser_snapshot`/`browser_find` 看结构 → `generate_spec` 生成骨架、补选择器 → `run_tests` 后台 → `status`/`failures` 轮询 → 分析根因,改后用 `retry_failed` 单点验证。
+`tester_convert_case` 读用例 → `browser_snapshot`/`browser_find` 看结构 → `tester_generate_spec` 生成骨架、补选择器 → `tester_run_tests` 后台 → `tester_status`/`tester_failures` 轮询 → 分析根因,改后用 `tester_retry_failed` 单点验证。
 
 ## 零负担(测试人员只聊天,不碰文件)
 
-- 被测地址:测试人员说 → 调 `set_base_url`。
-- 登录:账号密码测试人员在对话里说,填进 `tests/_login.ts`;验证码用 `login`+`login_status`。
+- 被测地址:测试人员说 → 调 `tester_set_base_url`。
+- 登录:账号密码测试人员在对话里说,填进 `tests/_login.ts`;验证码用 `tester_login`+`tester_login_status`。
 - 多账号隔离:要跑第二个账号,在 `_login.ts` 的 `TEST_ACCOUNTS` 加一个账号,并跑 `TESTER_ACCOUNT=<key> npm run test`(各账号登录态独立文件,互不覆盖)。
 - **禁止要求测试人员改 `.env`/配置文件/建文件。**
 
@@ -72,7 +72,7 @@
 ## 省时间 / 省 token
 
 - 探查用 `browser_snapshot`/`browser_find`(大页面先对容器 `target` 精准看),禁止临时 spec。
-- 改完 `retry_failed` 单点,不全量重跑;先探查确认再改,别靠反复跑试错。
-- 选择性执行:给用例加 tag(如 `test('标题', { tag: ['@smoke'] }, ...)`),要只跑某组时 `run_tests {grep: '@smoke'}` 或 `npm run test -- --grep @smoke`。
-- 环境:需要干净环境的用例**先构造**(`env_reset`/清理数据),构造不了才 `test.skip`+说明;构造时**只动测试数据、可还原、拿不准就 skip**,绝不瞎搞真实数据。
+- 改完 `tester_retry_failed` 单点,不全量重跑;先探查确认再改,别靠反复跑试错。
+- 选择性执行:给用例加 tag(如 `test('标题', { tag: ['@smoke'] }, ...)`),要只跑某组时 `tester_run_tests {grep: '@smoke'}` 或 `npm run test -- --grep @smoke`。
+- 环境:需要干净环境的用例**先构造**(`tester_env_reset`/清理数据),构造不了才 `test.skip`+说明;构造时**只动测试数据、可还原、拿不准就 skip**,绝不瞎搞真实数据。
 - 环境限制(持久化不保持等)不算 bug,`test.skip`+说明即可。

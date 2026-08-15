@@ -8,7 +8,7 @@
 - `.csv` — 禅道 / TestLink / Jira 导出的用例
 - `.txt` — 自然语言描述的操作步骤
 
-**不需要改写成任何特定格式。** AI harness 通过 MCP 的 `convert_case` 读取它,自动理解并生成可执行的测试脚本(`tests/*.spec.ts`)。
+**不需要改写成任何特定格式。** AI harness 通过 MCP 的 `tester_convert_case` 读取它,自动理解并生成可执行的测试脚本(`tests/*.spec.ts`)。
 
 Excel 示例(一个 sheet 一行用例,AI 会自动识别"步骤/预期"列):
 
