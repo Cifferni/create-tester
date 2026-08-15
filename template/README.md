@@ -14,7 +14,7 @@
 **不用改任何格式**,原样放进去就行。
 
 ### 2. 对 AI 说需求
-在 AI 对话里说一句人话,例如:
+用支持本工程的 AI(Claude Code / Cursor / opencode 等)**打开这个工程,直接聊天即可**——AI 会自动连接本工程,你不需要启动任何东西。说一句人话,例如:
 
 > "把 test-cases/登录.xlsx 转成测试用例跑一遍,失败的给我分析根因"
 > "给订单功能写几个测试,断言接口 /api/order 返回 code=0"
@@ -46,6 +46,7 @@ AI 会自动:读用例 → 打开页面看结构 → 生成测试 → 跑测试 
 
 ## 给维护者(接入 AI 的人)
 
-- AI 通过本工程的 MCP server(`mcp/server.cjs`)工作:在 AI 工具里配置一个 stdio server,`command` 用 `node`,`args` 指向 `D:/my-test/mcp/server.cjs`,`cwd` 指向工程根目录。
+- **打开工程即连,无需手动启动**:工程根目录自带 `.mcp.json`,支持项目级 MCP 的 AI(Claude Code / Cursor / opencode 等)**打开本工程就会自动连接**,测试人员直接聊天即可,不用手动开 server。
+- 如果 AI 不认项目级 `.mcp.json`(如 Codex 走 config.toml):在 AI 工具里配置 stdio server,`command` 用 `node`,`args` 指向 `D:/my-test/mcp/server.cjs`,`cwd` 指向工程根目录。
 - 工程完全自包含,不依赖外部包;AI 工作规范见 `AGENTS.md`。
 - 被测地址/浏览器可用环境变量 `BASE_URL`、`TESTER_BROWSER` 配置。

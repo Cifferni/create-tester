@@ -78,11 +78,13 @@ async function main(opts: Options): Promise<void> {
   copyTemplate(templateDir, target);
   writePackageJson(target, name, browser, extras);
   setBrowser(target, browser);
+  writeMcpJson(target);
 
   console.log(`[create-tester] 已创建测试项目:${target}`);
   console.log(`[create-tester] 主浏览器:${browser}${browser === 'chrome' ? '(系统 Chrome,免下载)' : ''}`);
   if (extras.length) console.log(`[create-tester] 额外浏览器:${extras.join(', ')}`);
   console.log('[create-tester] 引擎代码在 mcp/,依赖与浏览器随 npm install 自动安装');
+  console.log('[create-tester] 已生成 .mcp.json:支持项目级 MCP 的 AI(Claude Code/Cursor/opencode)打开工程即自动连接,无需手动启动');
 
   if (opts.install !== false) {
     console.log('[create-tester] 正在 npm install(首次会下载依赖与浏览器,请稍候)…');
@@ -90,15 +92,26 @@ async function main(opts: Options): Promise<void> {
     await new Promise((resolve) => child.on('close', resolve));
     console.log('[create-tester] 安装完成,可以直接用了:');
     console.log('  cd ' + target);
-    console.log('  npm run test        # 跑回归(playwright test)');
-    console.log('  node mcp/server.cjs # 启动工程内 MCP server(见 AGENTS.md)');
+    console.log('  npm run test        # 跑回归(playwright test,不用开 AI)');
+    console.log('  # 让 AI 干活:用支持项目级 .mcp.json 的 AI 打开本工程,直接聊天即可');
   } else {
     console.log('  接下来:');
     console.log('  cd ' + target);
     console.log('  npm install');
-    console.log('  npm run test        # 跑回归(playwright test)');
-    console.log('  node mcp/server.cjs # 启动工程内 MCP server(见 AGENTS.md)');
+    console.log('  npm run test        # 跑回归(playwright test,不用开 AI)');
+    console.log('  # 让 AI 干活:用支持项目级 .mcp.json 的 AI 打开本工程,直接聊天即可');
   }
+}
+
+// 生成工程级 .mcp.json:支持项目级 MCP 的 harness 打开工程自动连接,测试人员无需手动启动
+function writeMcpJson(target: string): void {
+  const rootUrl = target.replace(/\\/g, '/');
+  const mcp = {
+    mcpServers: {
+      tester: { command: 'node', args: [`${rootUrl}/mcp/server.cjs`], cwd: rootUrl }
+    }
+  };
+  fs.writeFileSync(path.join(target, '.mcp.json'), JSON.stringify(mcp, null, 2) + '\n', 'utf8');
 }
 
 function copyTemplate(templateDir: string, target: string): void {
