@@ -30,12 +30,18 @@
 
 验证码登录首次跑一次 `npm run login` 手动登录,之后自动复用;回归 `npm run test` 不需要 AI/MCP。
 
-## 用法
+## 安装 / 快速开始
 
 ```bash
-npm create tester@latest          # 交互式创建测试项目
-# 或
-npx create-tester@latest my-test  # 直接指定名字
+# 方式一:npm create(推荐,无需全局安装,交互式)
+npm create tester@latest
+
+# 方式二:npx(直接指定项目名)
+npx create-tester@latest my-test
+
+# 方式三:全局安装后直接用 create-tester 命令
+npm i -g create-tester
+create-tester my-test
 ```
 
 生成后:
