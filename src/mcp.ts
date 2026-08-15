@@ -178,9 +178,10 @@ function runMCP(): void {
     '后台运行 Playwright 测试(默认 tests/ 全部),立即返回"运行中",跑完用 status/failures 轮询结果。注意:不提供同步等待——客户端 MCP 有请求超时,同步等待大测试必断。文件参数传相对路径,如 tests/login/登录.spec.ts',
     {
       files: z.array(z.string()).optional().describe('要跑的 spec 文件列表,缺省跑全部'),
-      headed: z.boolean().optional().describe('是否带界面执行,默认无头')
+      headed: z.boolean().optional().describe('是否带界面执行,默认无头'),
+      workers: z.number().optional().describe('并行 worker 数,缺省用 config;提速用(需用例彼此隔离,否则会互踩)')
     },
-    ({ files, headed }) => {
+    ({ files, headed, workers }) => {
       const list = files && files.length ? files : defaultSpecFiles();
       if (!list.length) return textResult(JSON.stringify({ error: '没有可运行的测试文件' }, null, 2));
       const root = projectRoot();
@@ -190,7 +191,7 @@ function runMCP(): void {
       } catch {
         // 忽略
       }
-      const { pid } = startPlaywrightTest(list, root, { headed });
+      const { pid } = startPlaywrightTest(list, root, { headed, workers });
       return textResult(
         JSON.stringify(
           { status: 'running', pid, note: '测试在后台运行,用 status/failures 轮询结果(未找到报告=仍在跑)' },
@@ -247,8 +248,11 @@ function runMCP(): void {
   server.tool(
     'retry_failed',
     '后台重跑上一次报告中的失败用例(只重跑失败的 spec,不做全量),立即返回"运行中",用 status/failures 轮询。不做同步等待(客户端 MCP 有请求超时)',
-    { headed: z.boolean().optional().describe('是否带界面执行,默认无头') },
-    ({ headed }) => {
+    {
+      headed: z.boolean().optional().describe('是否带界面执行,默认无头'),
+      workers: z.number().optional().describe('并行 worker 数,缺省用 config;提速用(需用例隔离)')
+    },
+    ({ headed, workers }) => {
       const report = path.join(projectRoot(), 'result', 'test-results.json');
       if (!fs.existsSync(report)) return textResult('未找到上次报告:result/test-results.json(先跑一次 run_tests)');
       const files = failedSpecFiles(fs.readFileSync(report, 'utf8'));
@@ -256,7 +260,7 @@ function runMCP(): void {
       try {
         fs.rmSync(path.join(projectRoot(), 'result', 'test-results.json'), { force: true });
       } catch {}
-      const { pid } = startPlaywrightTest(files, projectRoot(), { headed });
+      const { pid } = startPlaywrightTest(files, projectRoot(), { headed, workers });
       return textResult(
         JSON.stringify(
           { status: 'running', pid, reran: files.length, note: '只重跑上次失败的 spec,用 status/failures 轮询' },

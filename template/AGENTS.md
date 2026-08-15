@@ -17,7 +17,7 @@
 | `snapshot` | 打开被测页面,返回可交互结构(定位元素用;纯图标按钮会补充 class/title 提示) |
 | `inspect` | 只读探查页面 DOM:按 CSS 选择器返回 outerHTML/属性/文本(不改数据) |
 | `list_specs` | 列出 `tests/` 下的 spec |
-| `run_tests` | 后台跑 Playwright 测试,立即返回"运行中";跑完用 `status`/`failures` 轮询(不做同步等待) |
+| `run_tests` | 后台跑 Playwright 测试,立即返回"运行中";跑完用 `status`/`failures` 轮询(不做同步等待);传 `{workers:N}` 可并行提速(需用例隔离) |
 | `status` | 读报告返回通过/失败/跳过/耗时总览 |
 | `failures` | 读报告返回全貌 {total,passed,skipped,failed} + 失败详情(含 stdout/stderr 日志) |
 | `retry_failed` | 只重跑上次失败的 spec(改完用例后用它收敛,不全量重跑) |

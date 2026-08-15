@@ -34,12 +34,13 @@ function spawnCapture(args: string[], cwd: string): Promise<{ code: number | nul
 export function startPlaywrightTest(
   files: string[],
   cwd: string,
-  opts: { headed?: boolean } = {}
+  opts: { headed?: boolean; workers?: number } = {}
 ): { pid: number } {
   const cli = playwrightTestCli(cwd);
   if (!cli) throw new Error('未找到 @playwright/test,请先 npm install');
-  // 不传 --workers:让 playwright.config.ts 的 workers/fullyParallel 生效(自动并行,比 --workers=1 串行快得多)
+  // 不传 --workers:让 playwright.config.ts 的 workers/fullyParallel 生效;传了则覆盖(提速用,需用例隔离)
   const args: string[] = [cli, 'test', '--output=result/output'];
+  if (opts.workers) args.push(`--workers=${opts.workers}`);
   if (opts.headed) args.push('--headed');
   args.push(...files);
   // detached + stdio ignore:不受 server 生命周期影响,也不会因管道满而阻塞
@@ -52,7 +53,7 @@ export function startPlaywrightTest(
 export async function runPlaywrightTest(
   files: string[],
   cwd: string,
-  opts: { timeoutMs?: number; headed?: boolean } = {}
+  opts: { timeoutMs?: number; headed?: boolean; workers?: number } = {}
 ): Promise<{ failures: TestFailure[]; raw: string }> {
   const cli = playwrightTestCli(cwd);
   if (!cli) throw new Error('未找到 @playwright/test,请先 npm install');
@@ -64,6 +65,7 @@ export async function runPlaywrightTest(
     'test',
     '--output=result/output'
   ];
+  if (opts.workers) args.push(`--workers=${opts.workers}`);
   if (opts.headed) args.push('--headed');
   args.push(...files);
   const timeoutMs = opts.timeoutMs ?? 180000;

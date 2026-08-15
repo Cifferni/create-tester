@@ -12,8 +12,11 @@ export default defineConfig({
   forbidOnly: !!process.env.CI,
   retries: 0,
   // 默认 1 个 worker:串行,避免用例之间互相踩数据(改配置/共享状态)。
-  // 用例彼此隔离(各自造数据、各自清理)后,可调大加速,如 workers: 4。
+  // 用例彼此隔离(各自造数据、各自清理)后,可调大加速,如 workers: 4;
+  // 或跑的时候传 workers 参数,如 run_tests {workers: 4}。
   workers: 1,
+  // 单条用例超时:卡死会被截断,不拖垮整轮(慢用例单独用 test.setTimeout 放大)
+  timeout: 30000,
   outputDir: 'result/output',
   reporter: [
     ['html', { outputFolder: 'result/report', open: 'never' }],
@@ -23,6 +26,8 @@ export default defineConfig({
     baseURL: process.env.BASE_URL || 'http://localhost:3000',
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure'
+    // 登录态复用(提速):先跑一次登录导出 storageState,再取消注释,所有用例共享登录,不用每条重新登录
+    // storageState: 'result/auth.json'
   },
   projects: [projectFor(BROWSER)]
 });

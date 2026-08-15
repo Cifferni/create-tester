@@ -58,7 +58,7 @@ test('登录成功', async ({ page }) => {
 | `snapshot` | 打开被测页面,返回可交互结构快照(纯图标按钮补充 class/title) |
 | `inspect` | 只读探查 DOM:按选择器返回 outerHTML/属性(不改数据) |
 | `list_specs` | 列出 `tests/` 下已生成的 spec |
-| `run_tests` | 后台跑测试,立即返回"运行中",用 `status`/`failures` 轮询(不做同步等待) |
+| `run_tests` | 后台跑测试,立即返回"运行中",用 `status`/`failures` 轮询;传 `{workers:N}` 并行提速(需用例隔离) |
 | `status` | 读报告,返回通过/失败/跳过/耗时总览 |
 | `failures` | 读报告,返回全貌 + 失败详情(含 stdout/stderr 日志) |
 | `retry_failed` | 只重跑上次失败的 spec(收敛失败循环) |
