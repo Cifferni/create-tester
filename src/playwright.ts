@@ -44,7 +44,8 @@ export function startPlaywrightTest(
   if (opts.headed) args.push('--headed');
   args.push(...files);
   // detached + stdio ignore:不受 server 生命周期影响,也不会因管道满而阻塞
-  const child = spawn(process.execPath, args, { cwd, detached: true, stdio: 'ignore' });
+  // windowsHide:Windows 上 detached 默认会新建一个控制台窗口,藏掉它(否则每次 run_tests 都弹一个终端)
+  const child = spawn(process.execPath, args, { cwd, detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
   return { pid: child.pid ?? 0 };
 }
