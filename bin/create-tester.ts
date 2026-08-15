@@ -106,7 +106,7 @@ function printProjectInfo(target: string, name: string, browser: string, extras:
     `  主浏览器   ${browser}${extras.length ? `(+ ${extras.join(', ')})` : ''}`,
     `  用例目录   test-cases/   放你已有的用例(Excel/XMind/Markdown/CSV/TXT)`,
     `  回归用例   tests/        可执行用例(AI 生成)`,
-    `  测试报告   ${rootUrl}/result/report/index.html`,
+    `  测试报告   ${rootUrl}/test-result/report/index.html`,
     `  MCP 连接   工程已带 .mcp.json,支持项目级 MCP 的 AI 打开即连`,
     thin,
     '  开始用:',

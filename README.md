@@ -61,7 +61,7 @@ tester install-browsers       # 安装 Playwright 浏览器(postinstall 自动�
 
 ## 登录(Playwright 官方模式 + 验证码编排)
 
-- `tests/auth.setup.ts` 跑测试前登录一次存 `result/auth.json`,**整轮只登录一次**,所有用例复用 storageState
+- `tests/auth.setup.ts` 跑测试前登录一次存 `test-result/auth.json`,**整轮只登录一次**,所有用例复用 storageState
 - 账号密码:测试人员在对话里说,AI 填进 `tests/_login.ts`,测试人员不碰文件
 - **验证码/短信**:`login` 工具后台弹浏览器人工登录一次 → `login_status` 轮询 `auth.json` 生成 → 自动继续;或首次 `npm run login`
 
@@ -109,7 +109,7 @@ my-test/
 ├── test-cases/       用例(支持 xlsx/xmind/md/csv/txt,输入源)
 ├── tests/            可执行用例
 │   ├── _login.ts     登录 helper(AI 填账号密码,测试人员不碰)
-│   ├── auth.setup.ts 登录 setup:登录一次存 result/auth.json
+│   ├── auth.setup.ts 登录 setup:登录一次存 test-result/auth.json
 │   └── <功能>/*.spec.ts
 ├── mcp/              引擎(自包含)
 │   ├── server.cjs    MCP server(引擎内联,可改)
@@ -120,7 +120,7 @@ my-test/
 ├── .mcp.json         支持项目级 MCP 的 AI 打开工程即连
 ├── AGENTS.md          给 AI 的工作规范(必用 MCP 工具/断言纪律/性能纪律)
 ├── README.md          测试人员使用引导
-└── result/           所有输出:report/(HTML 报告)、test-results.json、auth.json、output/(截图/trace)
+└── test-result/      所有输出:report/(HTML 报告)、test-results.json、auth.json、output/(截图/trace)
 ```
 
 ## 配置(无配置文件,环境变量)

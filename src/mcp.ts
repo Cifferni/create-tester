@@ -207,14 +207,14 @@ function runMCP(): void {
     {},
     () => {
       const root = projectRoot();
-      const authFile = path.join(root, 'result', 'auth.json');
+      const authFile = path.join(root, 'test-result', 'auth.json');
       if (fs.existsSync(authFile)) return textResult(`已有登录态:${authFile},无需重新登录`);
       const { baseURL } = playwrightConfig();
-      fs.mkdirSync(path.join(root, 'result'), { recursive: true });
+      fs.mkdirSync(path.join(root, 'test-result'), { recursive: true });
       // detached + windowsHide:不阻塞 MCP 请求、不弹终端窗口;浏览器窗口会正常打开
       const child = spawn(
         'npx',
-        ['playwright', 'codegen', baseURL, '--save-storage=result/auth.json'],
+        ['playwright', 'codegen', baseURL, '--save-storage=test-result/auth.json'],
         { cwd: root, detached: true, stdio: 'ignore', windowsHide: true, shell: true }
       );
       child.unref();
@@ -224,15 +224,15 @@ function runMCP(): void {
 
   server.tool(
     'login_status',
-    '检查人工登录是否完成(result/auth.json 是否已生成)',
+    '检查人工登录是否完成(test-result/auth.json 是否已生成)',
     {},
     () => {
-      const f = path.join(projectRoot(), 'result', 'auth.json');
+      const f = path.join(projectRoot(), 'test-result', 'auth.json');
       if (!fs.existsSync(f)) {
-        return textResult('未完成:result/auth.json 还没生成(等测试人员在浏览器里完成登录并关掉浏览器)');
+        return textResult('未完成:test-result/auth.json 还没生成(等测试人员在浏览器里完成登录并关掉浏览器)');
       }
       const mtime = fs.statSync(f).mtime.toISOString();
-      return textResult(`已完成:result/auth.json(保存于 ${mtime}),登录态可复用,直接重跑测试`);
+      return textResult(`已完成:test-result/auth.json(保存于 ${mtime}),登录态可复用,直接重跑测试`);
     }
   );
 
@@ -260,7 +260,7 @@ function runMCP(): void {
       const root = projectRoot();
       // 清掉旧报告:让 status/failures 的"未找到报告"能区分"还在跑"
       try {
-        fs.rmSync(path.join(root, 'result', 'test-results.json'), { force: true });
+        fs.rmSync(path.join(root, 'test-result', 'test-results.json'), { force: true });
       } catch {
         // 忽略
       }
@@ -277,10 +277,10 @@ function runMCP(): void {
 
   server.tool(
     'failures',
-    '读取 result/test-results.json 报告,返回整轮全貌 {total,passed,skipped,failed} + 失败用例详情(含错误信息与 stdout/stderr 日志)。报告未生成说明仍在跑,应稍后轮询',
-    { file: z.string().optional().describe('JSON 报告路径,默认 result/test-results.json') },
+    '读取 test-result/test-results.json 报告,返回整轮全貌 {total,passed,skipped,failed} + 失败用例详情(含错误信息与 stdout/stderr 日志)。报告未生成说明仍在跑,应稍后轮询',
+    { file: z.string().optional().describe('JSON 报告路径,默认 test-result/test-results.json') },
     ({ file }) => {
-      const report = cwdResolve(file || 'result/test-results.json');
+      const report = cwdResolve(file || 'test-result/test-results.json');
       if (!fs.existsSync(report)) return textResult(`未找到报告:${report}(测试可能仍在运行,稍后再查)`);
       const s = summarizeJsonReport(fs.readFileSync(report, 'utf8'));
       if (!s) return textResult('报告解析失败');
@@ -303,10 +303,10 @@ function runMCP(): void {
 
   server.tool(
     'status',
-    '读取 result/test-results.json 报告,返回通过/失败/跳过/耗时总览(供 AI 一眼看清整轮结果)',
-    { file: z.string().optional().describe('JSON 报告路径,默认 result/test-results.json') },
+    '读取 test-result/test-results.json 报告,返回通过/失败/跳过/耗时总览(供 AI 一眼看清整轮结果)',
+    { file: z.string().optional().describe('JSON 报告路径,默认 test-result/test-results.json') },
     ({ file }) => {
-      const report = cwdResolve(file || 'result/test-results.json');
+      const report = cwdResolve(file || 'test-result/test-results.json');
       if (!fs.existsSync(report)) return textResult(`未找到报告:${report}(测试可能仍在运行,稍后再查)`);
       const s = summarizeJsonReport(fs.readFileSync(report, 'utf8'));
       if (!s) return textResult('报告解析失败');
@@ -326,12 +326,12 @@ function runMCP(): void {
       workers: z.number().optional().describe('并行 worker 数,缺省用 config;提速用(需用例隔离)')
     },
     ({ headed, workers }) => {
-      const report = path.join(projectRoot(), 'result', 'test-results.json');
-      if (!fs.existsSync(report)) return textResult('未找到上次报告:result/test-results.json(先跑一次 run_tests)');
+      const report = path.join(projectRoot(), 'test-result', 'test-results.json');
+      if (!fs.existsSync(report)) return textResult('未找到上次报告:test-result/test-results.json(先跑一次 run_tests)');
       const files = failedSpecFiles(fs.readFileSync(report, 'utf8'));
       if (!files.length) return textResult('上次报告中没有失败用例,无需重跑');
       try {
-        fs.rmSync(path.join(projectRoot(), 'result', 'test-results.json'), { force: true });
+        fs.rmSync(path.join(projectRoot(), 'test-result', 'test-results.json'), { force: true });
       } catch {}
       const { pid } = startPlaywrightTest(files, projectRoot(), { headed, workers });
       return textResult(

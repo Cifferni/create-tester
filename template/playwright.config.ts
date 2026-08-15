@@ -5,7 +5,7 @@ import { defineConfig, devices } from '@playwright/test';
 //   TESTER_BROWSER  浏览器:chromium/chrome/firefox/webkit(默认 chromium)
 const BROWSER = process.env.TESTER_BROWSER || 'chromium';
 
-// 所有输出(报告/产物/抓包)统一放在 result/ 下
+// 所有输出(报告/产物/抓包)统一放在 test-result/ 下
 export default defineConfig({
   testDir: './tests',
   fullyParallel: true,
@@ -17,10 +17,10 @@ export default defineConfig({
   workers: 1,
   // 单条用例超时:卡死会被截断,不拖垮整轮(慢用例单独用 test.setTimeout 放大)
   timeout: 30000,
-  outputDir: 'result/output',
+  outputDir: 'test-result/output',
   reporter: [
-    ['html', { outputFolder: 'result/report', open: 'never' }],
-    ['json', { outputFile: 'result/test-results.json' }]
+    ['html', { outputFolder: 'test-result/report', open: 'never' }],
+    ['json', { outputFile: 'test-result/test-results.json' }]
   ],
   use: {
     baseURL: process.env.BASE_URL || 'http://localhost:3000',
@@ -28,7 +28,7 @@ export default defineConfig({
     trace: 'retain-on-failure'
   },
   projects: [
-    // setup 先登录一次存 result/auth.json,业务用例共享登录态(整轮只登一次)
+    // setup 先登录一次存 test-result/auth.json,业务用例共享登录态(整轮只登一次)
     { name: 'setup', testMatch: /auth\.setup\.ts/ },
     { ...projectFor(BROWSER), dependencies: ['setup'] }
   ]
@@ -39,13 +39,13 @@ function projectFor(browser: string) {
     case 'chrome':
       return {
         name: 'chrome',
-        use: { ...devices['Desktop Chrome'], channel: 'chrome', storageState: 'result/auth.json' }
+        use: { ...devices['Desktop Chrome'], channel: 'chrome', storageState: 'test-result/auth.json' }
       };
     case 'firefox':
-      return { name: 'firefox', use: { ...devices['Desktop Firefox'], storageState: 'result/auth.json' } };
+      return { name: 'firefox', use: { ...devices['Desktop Firefox'], storageState: 'test-result/auth.json' } };
     case 'webkit':
-      return { name: 'webkit', use: { ...devices['Desktop Safari'], storageState: 'result/auth.json' } };
+      return { name: 'webkit', use: { ...devices['Desktop Safari'], storageState: 'test-result/auth.json' } };
     default:
-      return { name: 'chromium', use: { ...devices['Desktop Chrome'], storageState: 'result/auth.json' } };
+      return { name: 'chromium', use: { ...devices['Desktop Chrome'], storageState: 'test-result/auth.json' } };
   }
 }

@@ -1,4 +1,4 @@
-// 登录 setup:跑测试前登录一次,把登录态存到 result/auth.json,所有用例复用(Playwright 官方 storageState 模式)
+// 登录 setup:跑测试前登录一次,把登录态存到 test-result/auth.json,所有用例复用(Playwright 官方 storageState 模式)
 // 无验证码:自动登录,整轮只登一次
 // 有验证码/短信:自动登录失败时,先跑 `npm run login` 人工登录一次,之后自动复用
 import { test as setup } from '@playwright/test';
@@ -6,7 +6,7 @@ import fs from 'fs';
 import path from 'path';
 import { ensureLoggedIn } from './_login';
 
-const AUTH_FILE = path.join(process.cwd(), 'result', 'auth.json');
+const AUTH_FILE = path.join(process.cwd(), 'test-result', 'auth.json');
 
 setup('登录并保存登录态', async ({ page }) => {
   // 已有登录态:先验证是否还有效(访问首页没被弹回登录页就算有效)

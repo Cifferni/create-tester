@@ -41,7 +41,7 @@ program
   .argument('[dir]', '测试工程根目录(缺省自动取当前目录)')
   .action((dir?: string) => {
     const root = path.resolve(dir || process.cwd());
-    // 工具按 projectRoot 读 test-cases/、tests/、result/,不依赖 harness 的 cwd
+    // 工具按 projectRoot 读 test-cases/、tests/、test-result/,不依赖 harness 的 cwd
     process.env.TESTER_PROJECT_ROOT = root;
     // 连接配置由 src/mcp 启动时打印到 stderr(node mcp/server.cjs 与 tester mcp 一致)
     // eslint-disable-next-line @typescript-eslint/no-require-imports

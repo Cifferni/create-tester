@@ -43,7 +43,7 @@ AI 会自动:读用例 → 打开页面看结构 → 生成测试 → 跑测试 
 ## 二、怎么看结果 / 回归
 
 - **失败原因**:AI 会直接告诉你"哪个用例挂了、为什么",不用自己看日志。
-- **HTML 报告**:打开 `result/report/index.html`,有截图和操作记录,可直接当 bug 证据发给开发。
+- **HTML 报告**:打开 `test-result/report/index.html`,有截图和操作记录,可直接当 bug 证据发给开发。
 - **回归(不需要开 AI / MCP)**:直接跑 `npm run test`,就会把 `tests/` 里已经固化的用例全部跑一遍,报告照常生成。想重跑上次失败的:`npm run test -- --last-failed`。
 
 ## 三、常见问题

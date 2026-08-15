@@ -31,7 +31,7 @@ function spawnCapture(args: string[], cwd: string): Promise<{ code: number | nul
 }
 
 // 后台启动 Playwright,立即返回(测试可能超过 MCP 客户端 60s 请求超时,不能同步等)。
-// 结果由 config 的 reporter 写盘:result/test-results.json(失败解析)+ result/index.html(结果页)。
+// 结果由 config 的 reporter 写盘:test-result/test-results.json(失败解析)+ test-result/report/index.html(结果页)。
 export function startPlaywrightTest(
   files: string[],
   cwd: string,
@@ -40,7 +40,7 @@ export function startPlaywrightTest(
   const cli = playwrightTestCli(cwd);
   if (!cli) throw new Error('未找到 @playwright/test,请先 npm install');
   // 不传 --workers:让 playwright.config.ts 的 workers/fullyParallel 生效;传了则覆盖(提速用,需用例隔离)
-  const args: string[] = [cli, 'test', '--output=result/output'];
+  const args: string[] = [cli, 'test', '--output=test-result/output'];
   if (opts.workers) args.push(`--workers=${opts.workers}`);
   if (opts.headed) args.push('--headed');
   args.push(...files);
@@ -60,12 +60,12 @@ export async function runPlaywrightTest(
   const cli = playwrightTestCli(cwd);
   if (!cli) throw new Error('未找到 @playwright/test,请先 npm install');
   // 不传 --reporter,让 playwright.config.ts 的 reporter 生效:
-  // HTML 结果页(result/index.html)和 JSON 报告(result/test-results.json)都会生成。
+  // HTML 结果页(test-result/report/index.html)和 JSON 报告(test-result/test-results.json)都会生成。
   // 之前用 --reporter=json 会覆盖 config,导致没有结果页、failures 工具也读不到报告。
   const args: string[] = [
     cli,
     'test',
-    '--output=result/output'
+    '--output=test-result/output'
   ];
   if (opts.workers) args.push(`--workers=${opts.workers}`);
   if (opts.headed) args.push('--headed');
@@ -76,8 +76,8 @@ export async function runPlaywrightTest(
   }, timeoutMs);
   const { stdout } = await spawnCapture(args, cwd);
   clearTimeout(timer);
-  // 结果来源:优先读 config 生成的 result/test-results.json(config 没配 json reporter 时退回 stdout)
-  const reportFile = path.join(cwd, 'result', 'test-results.json');
+  // 结果来源:优先读 config 生成的 test-result/test-results.json(config 没配 json reporter 时退回 stdout)
+  const reportFile = path.join(cwd, 'test-result', 'test-results.json');
   const raw = fs.existsSync(reportFile) ? fs.readFileSync(reportFile, 'utf8') : stdout;
   const failures = parseJsonReport(raw);
   return { failures, raw };

@@ -41,8 +41,8 @@
 
 - **测试人员只在对话里说"账号 xxx、密码 xxx"即可,禁止要求测试人员改 `.env`/配置文件/建文件。**
 - 先 `snapshot` 看登录页结构,把账号密码和登录选择器填进 `tests/_login.ts`。
-- 登录态由 `tests/auth.setup.ts` 在跑测试前自动登录一次并存到 `result/auth.json`,**整轮只登录一次**,所有用例复用(config 已接 storageState)。
-- **验证码/短信(自动编排,只差人输一下)**:发现登录失败/出现验证码时,`login` 工具后台打开浏览器 → 提示测试人员在弹窗里完成登录 → `login_status` 轮询到 `result/auth.json` 生成 → 自动重跑。不需要测试人员输命令,只需在弹窗里输验证码。
+- 登录态由 `tests/auth.setup.ts` 在跑测试前自动登录一次并存到 `test-result/auth.json`,**整轮只登录一次**,所有用例复用(config 已接 storageState)。
+- **验证码/短信(自动编排,只差人输一下)**:发现登录失败/出现验证码时,`login` 工具后台打开浏览器 → 提示测试人员在弹窗里完成登录 → `login_status` 轮询到 `test-result/auth.json` 生成 → 自动重跑。不需要测试人员输命令,只需在弹窗里输验证码。
 - `ensureLoggedIn(page)` 做兜底:会话中途被踢回登录页时自动重登;发现未登录不要当成 bug 报。
 
 ## 业务断言(测出 bug 的关键,务必遵守)
