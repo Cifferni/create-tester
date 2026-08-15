@@ -181,6 +181,27 @@ function runMCP(): void {
   );
 
   server.tool(
+    'env_reset',
+    '执行工程内的环境清理脚本(mcp/env-reset.cjs),还原被测环境(删测试数据/还原状态),保证回归可复跑。脚本由 AI 按被测应用实现;跑会改数据的回归前建议先调它',
+    {},
+    () => {
+      const script = path.join(projectRoot(), 'mcp', 'env-reset.cjs');
+      if (!fs.existsSync(script)) return textResult(`未找到 ${script}(可让 AI 按被测应用写环境清理)`);
+      const child = spawn(process.execPath, [script], { cwd: projectRoot(), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+      let out = '';
+      let err = '';
+      child.stdout.on('data', (d) => (out += d));
+      child.stderr.on('data', (d) => (err += d));
+      return new Promise((resolve) => {
+        child.on('close', (code) => {
+          const body = [out, err].filter(Boolean).join('\n').trim();
+          resolve(textResult(`env_reset 退出码 ${code ?? 1}\n${body || '(无输出)'}`));
+        });
+      });
+    }
+  );
+
+  server.tool(
     'login',
     '后台打开带界面浏览器做人工登录(验证码/短信场景):返回后请在浏览器里完成登录并关掉,再用 login_status 确认。无验证码时 auth.setup 会自动登录,一般不需要这个',
     {},
