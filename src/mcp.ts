@@ -165,6 +165,22 @@ function runMCP(): void {
   );
 
   server.tool(
+    'set_base_url',
+    '设置被测页面地址:改写 playwright.config.ts 的 baseURL。测试人员在对话里说被测地址时调用,不需要测试人员改文件。环境变量 BASE_URL 优先,会覆盖这里',
+    { url: z.string().describe('被测页面地址,如 http://localhost:5173') },
+    ({ url }) => {
+      const cfgFile = path.join(projectRoot(), 'playwright.config.ts');
+      if (!fs.existsSync(cfgFile)) return textResult(`未找到 ${cfgFile}`);
+      const text = fs.readFileSync(cfgFile, 'utf8');
+      const re = /baseURL:\s*process\.env\.BASE_URL\s*\|\|\s*'[^']*'/;
+      if (!re.test(text)) return textResult('未找到 baseURL 配置(playwright.config.ts 格式不匹配),请手动检查');
+      const updated = text.replace(re, `baseURL: process.env.BASE_URL || '${url}'`);
+      fs.writeFileSync(cfgFile, updated, 'utf8');
+      return textResult(`已把被测地址设为 ${url}(playwright.config.ts 的 baseURL)\n若设置了环境变量 BASE_URL 则优先于它;下次 snapshot/run_tests 生效`);
+    }
+  );
+
+  server.tool(
     'login',
     '后台打开带界面浏览器做人工登录(验证码/短信场景):返回后请在浏览器里完成登录并关掉,再用 login_status 确认。无验证码时 auth.setup 会自动登录,一般不需要这个',
     {},

@@ -32,6 +32,11 @@
 5. `status` / `failures` 轮询拿结果
 6. 分析根因,改 spec 后用 `retry_failed` 只重跑失败的
 
+## 被测地址(测试人员零负担)
+
+- 测试人员说"被测地址是 xxx"时,调 `set_base_url` 更新 `playwright.config.ts` 的 baseURL,**不要要求测试人员改文件**。
+- 环境变量 `BASE_URL` 优先于 config;两者都没设时用默认 `http://localhost:3000`。
+
 ## 登录(测试人员零负担)
 
 - **测试人员只在对话里说"账号 xxx、密码 xxx"即可,禁止要求测试人员改 `.env`/配置文件/建文件。**
