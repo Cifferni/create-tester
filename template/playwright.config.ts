@@ -26,8 +26,6 @@ export default defineConfig({
     baseURL: process.env.BASE_URL || 'http://localhost:3000',
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure'
-    // 登录态复用(提速):先跑一次登录导出 storageState,再取消注释,所有用例共享登录,不用每条重新登录
-    // storageState: 'result/auth.json'
   },
   projects: [projectFor(BROWSER)]
 });

@@ -32,6 +32,12 @@
 5. `status` / `failures` 轮询拿结果
 6. 分析根因,改 spec 后用 `retry_failed` 只重跑失败的
 
+## 登录(测试人员零负担)
+
+- **测试人员只在对话里说"账号 xxx、密码 xxx"即可,禁止要求测试人员改 `.env`/配置文件/建文件。**
+- 需要登录的用例:先 `snapshot` 看登录页结构,把账号密码和登录选择器填进 `tests/_login.ts`,用例开头调用 `ensureLoggedIn(page)`。
+- 发现未登录(被重定向到登录页)自动重登,不要当成 bug 报。
+
 ## 业务断言(测出 bug 的关键,务必遵守)
 
 - **每个用例必须有业务结果断言,禁止"只点不验"。** 点完按钮 → 断言接口 `expectApi`(code/字段/状态码)或页面结果(`toHaveURL`/`toHaveText`/`toHaveClass`/`toBeVisible` 等)。
