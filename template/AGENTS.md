@@ -6,6 +6,7 @@
 2. 每个用例**必须有业务断言**,禁止"只点不验";断言依据 = 用例文档的"预期",不是页面现状(不符就报告,不改断言迁就)。
 3. **禁止 `page.waitForTimeout()`**(硬编码延时),要等就用 `waitForVisible/Clickable/Text/URL`,等状态不等时间。
 4. 定位器优先级(强制):`getByTestId` > `getByRole+name` > CSS/class > `getByText`(仅兜底且必须唯一)。
+5. **快照 ref 不过期复用**:browser_snapshot 拿到的 target(ref)只在当前页面状态有效;每次页面变化后旧 ref 失效。操作报 "Ref not found" 时,**一律先重新 browser_snapshot 拿新快照**,再基于新 ref 操作,绝不拿旧快照的 ref 硬试。
 
 ## 工具速查
 
