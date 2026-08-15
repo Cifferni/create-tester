@@ -12,6 +12,7 @@ interface ElLike {
   className: string;
   hasAttribute(name: string): boolean;
   getAttribute(name: string): string | null;
+  querySelector(sel: string): { getAttribute(name: string): string | null } | null;
 }
 
 // 提取页面可交互结构给 AI 定位用
@@ -49,7 +50,10 @@ export async function getPageSnapshot(page: Page, maxChars = 8000): Promise<stri
             const title = e.getAttribute('title') ? ` title="${e.getAttribute('title')}"` : '';
             const alt = e.getAttribute('alt') ? ` alt="${e.getAttribute('alt')}"` : '';
             const disabled = e.hasAttribute('disabled') ? ' [disabled]' : '';
-            return `[${role}${disabled}]${cls ? ` class="${cls}"` : ''}${title}${alt}`;
+            // 纯图标按钮:补第一个 svg path 的 d 特征,便于区分不同图标
+            const svg = e.querySelector('svg path')?.getAttribute('d')?.slice(0, 24) || '';
+            const svgHint = svg ? ` svg="${svg}"` : '';
+            return `[${role}${disabled}]${cls ? ` class="${cls}"` : ''}${title}${alt}${svgHint}`;
           })
           .filter(Boolean)
       );

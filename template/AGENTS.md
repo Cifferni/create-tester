@@ -31,3 +31,12 @@
 4. `run_tests` 后台启动
 5. `status` / `failures` 轮询拿结果
 6. 分析根因,改 spec 后用 `retry_failed` 只重跑失败的
+
+## 性能与纪律(务必遵守,否则一次任务跑 30 分钟)
+
+- **探查一律用 `snapshot` / `inspect`,禁止写临时 spec / probe 脚本。** 一次调用尽量覆盖多个问题(传多个选择器、`inspect` 批量)。
+- **纯图标按钮**:看 `snapshot` 补充区(有 `class`/`svg` path 特征)或用 `inspect` 拿 outerHTML 里的 `<svg><path d=...>`。
+- **改完 spec 用 `retry_failed` 单点验证,不要全量重跑。** 全量只留到最后确认一次。
+- **先探查、再改**:定位/断言失败时,先用 `snapshot`/`inspect` 确认页面真实结构,不要靠反复全量跑试错。
+- **环境限制 vs 真 bug**:若失败是环境所致(如持久化依赖外部存储、刷新不保持),先在报告里注明原因并 `test.skip`,不要反复改。
+- **环境数据敏感**:用例尽量"造数据 + 自我清理";判断"新增/删除"用计数对比(namesBefore/namesAfter),不要靠名字唯一。`run_tests` 传 `{workers:N}` 提速前,先确认用例彼此隔离。
