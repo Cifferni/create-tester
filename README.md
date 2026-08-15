@@ -57,6 +57,8 @@ tester mcp                    # 启动 MCP stdio server,打印可粘贴配置
 tester install-browsers       # 安装 Playwright 浏览器(postinstall 自动调用)
 ```
 
+> 所有命令支持 `--help`(如 `create-tester --help`、`tester mcp --help`)、`--version`。
+
 ## 登录(Playwright 官方模式 + 验证码编排)
 
 - `tests/auth.setup.ts` 跑测试前登录一次存 `result/auth.json`,**整轮只登录一次**,所有用例复用 storageState
