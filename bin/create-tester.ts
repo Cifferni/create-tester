@@ -181,7 +181,7 @@ function readAllStdin(): Promise<string> {
 program
   .name('create-tester')
   .description('创建 tester 测试项目(脚手架)')
-  .version('0.5.2')
+  .version('0.5.3')
   .argument('[name]', '项目目录名(不填则交互询问)')
   .option('-b, --browser <name>', '主浏览器:chromium/chrome/firefox/webkit')
   .option('--extra-browsers <names>', '额外浏览器,逗号分隔')
