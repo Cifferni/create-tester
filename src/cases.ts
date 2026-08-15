@@ -23,6 +23,58 @@ export function readCaseFile(file: string): string {
   }
 }
 
+// ---------- 语义结构化 ----------
+// 识别表格类用例(Excel/Markdown/CSV)的列角色,输出【前置/操作/预期/数据】,
+// 让 AI 生成 spec 时"操作从步骤来、断言从预期来",提高确定性、避免把页面现状当预期。
+
+type ColRole = 'title' | 'pre' | 'op' | 'expect' | 'data';
+
+const COLUMN_KEYWORDS: Array<[ColRole, string[]]> = [
+  ['title', ['标题', '名称', '用例名称', '用例', 'name']],
+  ['pre', ['前置', '预置', '前提', '前置条件', 'precondition']],
+  ['op', ['步骤', '操作', '动作', '步骤说明', 'action']],
+  ['expect', ['预期', '期望', '断言', '结果', '期望结果', 'expected']],
+  ['data', ['数据', '测试数据', '输入', 'data']]
+];
+
+function columnRole(header: string): ColRole | undefined {
+  const h = header.toLowerCase().trim();
+  for (const [role, keys] of COLUMN_KEYWORDS) {
+    if (keys.some((k) => h.includes(k.toLowerCase()))) return role;
+  }
+  return undefined;
+}
+
+// 尝试按列角色结构化;识别不出(没有操作/预期列)返回空串,调用方回退为平铺文本
+function renderStructured(rows: string[][]): string {
+  const header = rows[0] || [];
+  const roles = header.map((h) => columnRole(h));
+  const hasOp = roles.includes('op');
+  const hasExpect = roles.includes('expect');
+  if (!hasOp && !hasExpect) return '';
+  const colOf = (role: ColRole): number => roles.indexOf(role);
+  const out: string[] = [];
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.every((c) => !c.trim())) continue;
+    const get = (role: ColRole): string => {
+      const idx = colOf(role);
+      return idx >= 0 && idx < row.length ? row[idx].trim() : '';
+    };
+    const parts: string[] = [`【用例:${get('title') || `第 ${i} 条`}】`];
+    const pre = get('pre');
+    if (pre) parts.push(`前置:${pre}`);
+    const op = get('op');
+    if (op) parts.push(`操作:${op}`);
+    const exp = get('expect');
+    if (exp) parts.push(`预期:${exp}`);
+    const data = get('data');
+    if (data) parts.push(`数据:${data}`);
+    out.push(parts.join('\n'));
+  }
+  return out.join('\n\n');
+}
+
 // ---------- Markdown ----------
 
 function parseMarkdown(file: string): string {
@@ -33,7 +85,7 @@ function parseMarkdown(file: string): string {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // markdown 表格:收集连续的行,转成 "a | b" 规整文本
+    // markdown 表格:收集连续的行;能识别"步骤/预期"列则结构化,否则转 "a | b" 规整文本
     if (/^\|.*\|/.test(trimmed)) {
       const table: string[] = [];
       while (i < lines.length && /^\|.*\|/.test(lines[i].trim())) {
@@ -42,7 +94,13 @@ function parseMarkdown(file: string): string {
       }
       // 跳过表头分隔行(|---|)
       const rows = table.filter((r) => !/^\|[\s\-:|]+\|$/.test(r));
-      out.push(...rows.map((r) => r.replace(/^\||\|$/g, '').trim()));
+      const cells = rows.map((r) => r.replace(/^\||\|$/g, '').split('|').map((c) => c.trim()));
+      const structured = renderStructured(cells);
+      if (structured) {
+        out.push(structured);
+      } else {
+        out.push(...rows.map((r) => r.replace(/^\||\|$/g, '').trim()));
+      }
       out.push('');
       continue;
     }
@@ -76,11 +134,19 @@ function parseExcel(file: string): string {
     const ws = wb.Sheets[sheetName];
     const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false });
     parts.push(`【工作表:${sheetName}】`);
-    for (const row of rows) {
-      if (!row || !row.length) continue;
-      const cells = row.map((c) => String(c ?? '').replace(/\s+/g, ' ').trim());
-      if (cells.every((c) => c === '')) continue;
-      parts.push(cells.join(' | '));
+    const cellRows = (rows as unknown[][]).map((r) =>
+      (r || []).map((c) => String(c ?? '').replace(/\s+/g, ' ').trim())
+    );
+    // 能识别"步骤/预期"列则结构化,否则平铺
+    const structured = renderStructured(cellRows);
+    if (structured) {
+      parts.push(structured);
+      continue;
+    }
+    for (const row of cellRows) {
+      if (!row.length) continue;
+      if (row.every((c) => c === '')) continue;
+      parts.push(row.join(' | '));
     }
   }
   return parts.join('\n');
@@ -91,10 +157,14 @@ function parseExcel(file: string): string {
 function parseCsv(file: string): string {
   const text = fs.readFileSync(file, 'utf8');
   const lines = text.split(/\r?\n/).filter((l) => l.trim());
-  return lines.map(parseCsvLine).join('\n');
+  const cellRows = lines.map(parseCsvLineCells);
+  // 能识别"步骤/预期"列则结构化,否则平铺
+  const structured = renderStructured(cellRows);
+  if (structured) return structured;
+  return cellRows.map((r) => r.join(' | ')).join('\n');
 }
 
-function parseCsvLine(line: string): string {
+function parseCsvLineCells(line: string): string[] {
   const cells: string[] = [];
   let cur = '';
   let inQuote = false;
@@ -121,7 +191,7 @@ function parseCsvLine(line: string): string {
     }
   }
   cells.push(cur.trim());
-  return cells.join(' | ');
+  return cells;
 }
 
 // ---------- XMind ----------

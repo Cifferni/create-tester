@@ -84,7 +84,7 @@ function runMCP(): void {
 
   server.tool(
     'convert_case',
-    '把 test-cases/ 下的用例文件(xlsx/xmind/csv/md/txt)转成结构化文本,供理解测试目标',
+    '把 test-cases/ 下的用例文件(xlsx/xmind/csv/md/txt)转成结构化文本;能识别"步骤/预期"列的表格会输出【前置/操作/预期/数据】。写 spec 时操作从"操作"来、断言从"预期"来,页面现状不等于预期',
     { file: z.string().describe('test-cases/ 下的文件路径,如 test-cases/登录.xlsx') },
     ({ file }) => {
       const abs = cwdResolve(file);
