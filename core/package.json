@@ -1,6 +1,6 @@
 {
   "name": "@create-tester/core",
-  "version": "0.6.3",
+  "version": "0.6.4",
   "description": "create-tester 引擎内核:接口断言 API / 用例解析 / 页面快照 / MCP 工具服务器(测试脚手架共用内核)",
   "license": "MIT",
   "engines": {
