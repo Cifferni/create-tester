@@ -38,7 +38,8 @@ export function startPlaywrightTest(
 ): { pid: number } {
   const cli = playwrightTestCli(cwd);
   if (!cli) throw new Error('未找到 @playwright/test,请先 npm install');
-  const args: string[] = [cli, 'test', '--output=result/output', '--workers=1'];
+  // 不传 --workers:让 playwright.config.ts 的 workers/fullyParallel 生效(自动并行,比 --workers=1 串行快得多)
+  const args: string[] = [cli, 'test', '--output=result/output'];
   if (opts.headed) args.push('--headed');
   args.push(...files);
   // detached + stdio ignore:不受 server 生命周期影响,也不会因管道满而阻塞
@@ -61,8 +62,7 @@ export async function runPlaywrightTest(
   const args: string[] = [
     cli,
     'test',
-    '--output=result/output',
-    '--workers=1'
+    '--output=result/output'
   ];
   if (opts.headed) args.push('--headed');
   args.push(...files);

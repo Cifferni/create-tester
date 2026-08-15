@@ -14,6 +14,7 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { readCaseFile } from './cases';
+import { closeBrowser } from './browser';
 import { launchBrowser } from './browser';
 import { playwrightConfig } from './config';
 import { getPageSnapshot } from './pagesnapshot';
@@ -83,14 +84,15 @@ function runMCP(): void {
     { url: z.string().optional().describe('要打开的页面地址,缺省用 BASE_URL / playwright.config.ts 的 baseURL') },
     async ({ url }) => {
       const { baseURL, browser } = playwrightConfig(url);
+      // 复用 server 内的共享浏览器,只开关页面
       const pw = await launchBrowser(browser as BrowserName, { headless: true });
+      const page = await pw.newPage();
       try {
-        const page = await pw.newPage();
         await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
         const snapshot = await getPageSnapshot(page);
         return textResult(`页面地址:${baseURL}\n\n${snapshot}`);
       } finally {
-        await pw.close();
+        await page.close();
       }
     }
   );
@@ -153,6 +155,10 @@ function runMCP(): void {
 
   const transport = new StdioServerTransport();
   void server.connect(transport);
+  // server 退出时关掉共享浏览器,避免残留进程
+  process.on('exit', () => {
+    void closeBrowser();
+  });
 }
 
 function defaultSpecFiles(): string[] {
