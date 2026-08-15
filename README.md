@@ -67,6 +67,7 @@ my-test/
 ├── cases/            用例(支持 xlsx/xmind/md/csv/txt)
 ├── tests/<功能>/*.spec.ts  可执行用例(AI 生成 或 codegen 录制)
 ├── playwright.config.ts  被测地址 + 浏览器 + 报告配置
+├── mcp/server.cjs    工程内自带的 MCP server 代码(可改)
 ├── AGENTS.md          给 AI 的工作规范(必用 MCP 工具)
 └── result/           所有输出:report/(HTML 报告)、test-results.json、output/(截图/trace)
 ```

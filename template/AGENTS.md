@@ -2,7 +2,7 @@
 
 ## 必用 MCP 工具,禁止另起炉灶
 
-本工程的全部测试能力由 MCP server `tester`(`node_modules/.bin/tester mcp`,由 `create-tester` 包提供)提供。AI 必须通过 MCP 工具工作,**禁止**:
+本工程的全部测试能力由 MCP server 提供(启动:`node mcp/server.cjs`,代码在本工程 `mcp/server.cjs`)。AI 必须通过 MCP 工具工作,**禁止**:
 
 - 编写/执行裸 Playwright 脚本(`require('playwright')` / `chromium.launch(...)` / `page.goto(...)`)
 - 编写临时脚本(probe / client)去调 MCP

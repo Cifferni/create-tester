@@ -41,6 +41,7 @@ npm run test        # 跑回归(playwright test,支持并行/重试/trace)
 npm run mcp         # 启动 MCP server(供 AI harness 连接)
 npx tester init     # 初始化目录规范(幂等)
 npx tester mcp      # 启动 MCP server,并打印可粘贴的配置
+node mcp/server.cjs # 直接用工程内自带的 MCP server(想改工具行为就改 mcp/server.cjs)
 ```
 
 ## 结构
@@ -49,6 +50,7 @@ npx tester mcp      # 启动 MCP server,并打印可粘贴的配置
 cases/              测试人员的既有用例(输入源,MCP convert_case 读取)
 tests/<功能>/*.spec.ts  可执行用例,按功能模块组织(AI 生成 或 playwright codegen 录制)
 playwright.config.ts  Playwright 配置(被测地址/浏览器,一般用环境变量)
+mcp/server.cjs       工程内自带的 MCP server 代码(可改;node mcp/server.cjs 启动)
 AGENTS.md            给 AI 的工作规范(必用 MCP 工具、禁止写裸脚本)
 result/             所有输出:report/(HTML 报告)、test-results.json、output/(截图/trace)
 ```
