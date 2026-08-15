@@ -11,7 +11,9 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: 0,
-  workers: undefined,
+  // 默认 1 个 worker:串行,避免用例之间互相踩数据(改配置/共享状态)。
+  // 用例彼此隔离(各自造数据、各自清理)后,可调大加速,如 workers: 4。
+  workers: 1,
   outputDir: 'result/output',
   reporter: [
     ['html', { outputFolder: 'result/report', open: 'never' }],

@@ -55,11 +55,12 @@ test('登录成功', async ({ page }) => {
 | --- | --- |
 | `list_cases` | 列出 `test-cases/` 下的用例文件 |
 | `convert_case` | 用例文件(xlsx/xmind/csv/md/txt)→ 结构化文本 |
-| `snapshot` | 打开被测页面,返回可交互结构快照(供定位元素) |
+| `snapshot` | 打开被测页面,返回可交互结构快照(纯图标按钮补充 class/title) |
+| `inspect` | 只读探查 DOM:按选择器返回 outerHTML/属性(不改数据) |
 | `list_specs` | 列出 `tests/` 下已生成的 spec |
-| `run_tests` | 跑 Playwright 测试:后台运行立即返回"运行中",用 `status`/`failures` 轮询;`wait:true` 同步等结果 |
-| `status` | 读报告,返回通过/失败/耗时总览 |
-| `failures` | 读报告,返回失败用例详情(报告未生成 = 仍在跑) |
+| `run_tests` | 后台跑测试,立即返回"运行中",用 `status`/`failures` 轮询(不做同步等待) |
+| `status` | 读报告,返回通过/失败/跳过/耗时总览 |
+| `failures` | 读报告,返回全貌 + 失败详情(含 stdout/stderr 日志) |
 | `retry_failed` | 只重跑上次失败的 spec(收敛失败循环) |
 | `generate_spec` | 按 test-cases/ 用例生成 spec 骨架(含 apiRecorder 模板) |
 

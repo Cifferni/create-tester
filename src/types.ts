@@ -26,4 +26,6 @@ export interface TestFailure {
   title: string;
   error?: string;
   location?: string;
+  stdout?: string;
+  stderr?: string;
 }

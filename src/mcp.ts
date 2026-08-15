@@ -101,10 +101,62 @@ function runMCP(): void {
       // 复用 server 内的共享浏览器,只开关页面
       const pw = await launchBrowser(browser as BrowserName, { headless: true });
       const page = await pw.newPage();
+      // 捕获页面错误/崩溃,便于区分"app 崩了"还是"浏览器崩了"
+      const events: string[] = [];
+      page.on('pageerror', (err) => events.push(`pageerror: ${err.message}`));
+      page.on('crash', () => events.push('page crashed (渲染进程崩溃)'));
+      page.on('console', (msg) => {
+        if (msg.type() === 'error') events.push(`console.error: ${msg.text().slice(0, 300)}`);
+      });
       try {
         await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
         const snapshot = await getPageSnapshot(page);
-        return textResult(`页面地址:${baseURL}\n\n${snapshot}`);
+        const extra = events.length ? `\n\n--- 页面事件 ---\n${events.join('\n')}` : '';
+        return textResult(`页面地址:${baseURL}\n\n${snapshot}${extra}`);
+      } finally {
+        await page.close();
+      }
+    }
+  );
+
+  server.tool(
+    'inspect',
+    '只读探查页面 DOM:按 CSS 选择器返回匹配元素的 outerHTML/属性/文本,用于搞清楚某个按钮/图标到底是什么。不改动任何数据',
+    {
+      url: z.string().optional().describe('要打开的页面地址,缺省 BASE_URL'),
+      selector: z.string().describe('CSS 选择器,如 .provider-card .compact-actions button')
+    },
+    async ({ url, selector }) => {
+      const { baseURL, browser } = playwrightConfig(url);
+      const pw = await launchBrowser(browser as BrowserName, { headless: true });
+      const page = await pw.newPage();
+      try {
+        await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector(selector, { timeout: 10000 }).catch(() => undefined);
+        const info = await page.evaluate(
+          (sel: string) => {
+            const els = (Array.from(document.querySelectorAll(sel)) as unknown[]).slice(0, 20);
+            return els.map((el) => {
+              const e = el as { tagName?: string; textContent?: string | null; outerHTML?: string; attributes?: { name: string; value: string }[] };
+              const attrs: Record<string, string> = {};
+              for (const a of Array.from(e.attributes || [])) attrs[a.name] = a.value;
+              return {
+                tag: (e.tagName || '').toLowerCase(),
+                attrs,
+                text: (e.textContent || '').trim().slice(0, 200),
+                outerHTML: (e.outerHTML || '').slice(0, 1500)
+              };
+            });
+          },
+          selector
+        );
+        if (!info.length) return textResult(`没有匹配 ${selector} 的元素(页面:${baseURL})`);
+        return textResult(
+          info
+            .map((i, idx) => `#${idx} <${i.tag}>\nattrs: ${JSON.stringify(i.attrs)}\ntext: ${i.text}\nhtml: ${i.outerHTML}`)
+            .join('\n\n')
+            .slice(0, 8000)
+        );
       } finally {
         await page.close();
       }
@@ -123,21 +175,16 @@ function runMCP(): void {
 
   server.tool(
     'run_tests',
-    '运行 Playwright 测试(默认 tests/ 全部)。缺省后台运行、立即返回"运行中",跑完用 failures 工具轮询结果;wait=true 则同步等跑完直接返回失败列表(需客户端设大超时,如 timeout:600000)。文件参数传相对路径,如 tests/login/登录.spec.ts',
+    '后台运行 Playwright 测试(默认 tests/ 全部),立即返回"运行中",跑完用 status/failures 轮询结果。注意:不提供同步等待——客户端 MCP 有请求超时,同步等待大测试必断。文件参数传相对路径,如 tests/login/登录.spec.ts',
     {
       files: z.array(z.string()).optional().describe('要跑的 spec 文件列表,缺省跑全部'),
-      headed: z.boolean().optional().describe('是否带界面执行,默认无头'),
-      wait: z.boolean().optional().describe('true=同步等跑完返回结果;缺省后台运行+用 failures 轮询')
+      headed: z.boolean().optional().describe('是否带界面执行,默认无头')
     },
-    async ({ files, headed, wait }) => {
+    ({ files, headed }) => {
       const list = files && files.length ? files : defaultSpecFiles();
       if (!list.length) return textResult(JSON.stringify({ error: '没有可运行的测试文件' }, null, 2));
       const root = projectRoot();
-      if (wait) {
-        const { failures } = await runPlaywrightTest(list, root, { headed });
-        return textResult(JSON.stringify({ status: 'done', failures }, null, 2));
-      }
-      // 清掉旧报告:让 failures 的"未找到报告"能区分"还在跑"
+      // 清掉旧报告:让 status/failures 的"未找到报告"能区分"还在跑"
       try {
         fs.rmSync(path.join(root, 'result', 'test-results.json'), { force: true });
       } catch {
@@ -146,7 +193,7 @@ function runMCP(): void {
       const { pid } = startPlaywrightTest(list, root, { headed });
       return textResult(
         JSON.stringify(
-          { status: 'running', pid, note: '测试在后台运行,用 failures 工具轮询结果(未找到报告=仍在跑)' },
+          { status: 'running', pid, note: '测试在后台运行,用 status/failures 轮询结果(未找到报告=仍在跑)' },
           null,
           2
         )
@@ -156,14 +203,27 @@ function runMCP(): void {
 
   server.tool(
     'failures',
-    '读取 result/test-results.json 报告,返回失败用例及其错误信息(供 AI 判断根因)。run_tests 是后台跑的,报告还没生成就说明仍在运行,应稍后轮询',
+    '读取 result/test-results.json 报告,返回整轮全貌 {total,passed,skipped,failed} + 失败用例详情(含错误信息与 stdout/stderr 日志)。报告未生成说明仍在跑,应稍后轮询',
     { file: z.string().optional().describe('JSON 报告路径,默认 result/test-results.json') },
     ({ file }) => {
       const report = cwdResolve(file || 'result/test-results.json');
       if (!fs.existsSync(report)) return textResult(`未找到报告:${report}(测试可能仍在运行,稍后再查)`);
-      const failures = parseJsonReport(fs.readFileSync(report, 'utf8'));
-      if (!failures.length) return textResult('报告中没有失败用例');
-      return textResult(failures.map((f) => `【${f.title}】\n${f.error || '(无错误信息)'}`).join('\n\n'));
+      const s = summarizeJsonReport(fs.readFileSync(report, 'utf8'));
+      if (!s) return textResult('报告解析失败');
+      const out: string[] = [
+        `共 ${s.total} | 通过 ${s.passed} | 失败 ${s.failed} | 跳过 ${s.skipped} | 耗时 ${s.durationMs}ms`
+      ];
+      if (!s.failures.length) {
+        out.push('(没有失败用例)');
+      } else {
+        for (const f of s.failures) {
+          out.push(`\n【${f.title}】`);
+          if (f.error && f.error !== '(无错误信息)') out.push(f.error);
+          if (f.stdout) out.push(`stdout:\n${f.stdout}`);
+          if (f.stderr) out.push(`stderr:\n${f.stderr}`);
+        }
+      }
+      return textResult(out.join('\n'));
     }
   );
 
@@ -186,27 +246,20 @@ function runMCP(): void {
 
   server.tool(
     'retry_failed',
-    '重跑上一次报告中的失败用例(只重跑失败的 spec,不做全量),缺省后台运行,用 failures/status 轮询',
-    {
-      headed: z.boolean().optional().describe('是否带界面执行,默认无头'),
-      wait: z.boolean().optional().describe('true=同步等跑完返回结果;缺省后台运行+轮询')
-    },
-    async ({ headed, wait }) => {
+    '后台重跑上一次报告中的失败用例(只重跑失败的 spec,不做全量),立即返回"运行中",用 status/failures 轮询。不做同步等待(客户端 MCP 有请求超时)',
+    { headed: z.boolean().optional().describe('是否带界面执行,默认无头') },
+    ({ headed }) => {
       const report = path.join(projectRoot(), 'result', 'test-results.json');
       if (!fs.existsSync(report)) return textResult('未找到上次报告:result/test-results.json(先跑一次 run_tests)');
       const files = failedSpecFiles(fs.readFileSync(report, 'utf8'));
       if (!files.length) return textResult('上次报告中没有失败用例,无需重跑');
-      if (wait) {
-        const { failures } = await runPlaywrightTest(files, projectRoot(), { headed });
-        return textResult(JSON.stringify({ status: 'done', reran: files.length, failures }, null, 2));
-      }
       try {
         fs.rmSync(path.join(projectRoot(), 'result', 'test-results.json'), { force: true });
       } catch {}
       const { pid } = startPlaywrightTest(files, projectRoot(), { headed });
       return textResult(
         JSON.stringify(
-          { status: 'running', pid, reran: files.length, note: '只重跑上次失败的 spec,用 failures/status 轮询' },
+          { status: 'running', pid, reran: files.length, note: '只重跑上次失败的 spec,用 status/failures 轮询' },
           null,
           2
         )

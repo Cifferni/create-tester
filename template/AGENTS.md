@@ -14,11 +14,12 @@
 | --- | --- |
 | `list_cases` | 列出 `test-cases/` 下的用例文件 |
 | `convert_case` | 用例文件(xlsx/xmind/csv/md/txt)→ 结构化文本 |
-| `snapshot` | 打开被测页面,返回可交互结构(定位元素用,替代一切手写选择器) |
+| `snapshot` | 打开被测页面,返回可交互结构(定位元素用;纯图标按钮会补充 class/title 提示) |
+| `inspect` | 只读探查页面 DOM:按 CSS 选择器返回 outerHTML/属性/文本(不改数据) |
 | `list_specs` | 列出 `tests/` 下的 spec |
-| `run_tests` | 后台跑 Playwright 测试,立即返回"运行中";跑完用 `status`/`failures` 轮询 |
-| `status` | 读报告返回通过/失败/耗时总览(一眼看清整轮结果) |
-| `failures` | 读报告返回失败详情;报告未生成 = 还在跑,稍后轮询 |
+| `run_tests` | 后台跑 Playwright 测试,立即返回"运行中";跑完用 `status`/`failures` 轮询(不做同步等待) |
+| `status` | 读报告返回通过/失败/跳过/耗时总览 |
+| `failures` | 读报告返回全貌 {total,passed,skipped,failed} + 失败详情(含 stdout/stderr 日志) |
 | `retry_failed` | 只重跑上次失败的 spec(改完用例后用它收敛,不全量重跑) |
 | `generate_spec` | 根据 test-cases/ 用例生成 spec 骨架(含 apiRecorder 模板),再补选择器 |
 

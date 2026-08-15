@@ -83,7 +83,17 @@ export interface JsonTest {
   title: string;
   status: string;
   error?: { message?: string };
-  results?: Array<{ status?: string; error?: { message?: string } }>;
+  results?: Array<{
+    status?: string;
+    error?: { message?: string };
+    stdout?: Array<{ text?: string }>;
+    stderr?: Array<{ text?: string }>;
+  }>;
+}
+
+function joinLines(arr: Array<{ text?: string }> | undefined, limit: number): string {
+  if (!arr || !arr.length) return '';
+  return arr.map((x) => x.text || '').join('').slice(0, limit);
 }
 
 export function parseJsonReport(raw: string): TestFailure[] {
@@ -105,7 +115,10 @@ export function parseJsonReport(raw: string): TestFailure[] {
             failures.push({
               // 报告里用例标题在 spec.title(tests[] 没有 title 字段)
               title: sp.title || t.title || '',
-              error: result?.error?.message || t.error?.message || '(无错误信息)'
+              error: result?.error?.message || t.error?.message || '(无错误信息)',
+              // 透出每条用例的 console 输出,诊断不用再手扒报告
+              stdout: joinLines(result?.stdout, 4000),
+              stderr: joinLines(result?.stderr, 2000)
             });
           }
         }
