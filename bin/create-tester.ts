@@ -83,24 +83,43 @@ async function main(opts: Options): Promise<void> {
   console.log(`[create-tester] 已创建测试项目:${target}`);
   console.log(`[create-tester] 主浏览器:${browser}${browser === 'chrome' ? '(系统 Chrome,免下载)' : ''}`);
   if (extras.length) console.log(`[create-tester] 额外浏览器:${extras.join(', ')}`);
-  console.log('[create-tester] 引擎代码在 mcp/,依赖与浏览器随 npm install 自动安装');
-  console.log('[create-tester] 已生成 .mcp.json:支持项目级 MCP 的 AI(Claude Code/Cursor/opencode)打开工程即自动连接,无需手动启动');
 
   if (opts.install !== false) {
     console.log('[create-tester] 正在 npm install(首次会下载依赖与浏览器,请稍候)…');
     const child = spawn('npm', ['install'], { cwd: target, stdio: 'inherit', shell: true });
     await new Promise((resolve) => child.on('close', resolve));
-    console.log('[create-tester] 安装完成,可以直接用了:');
-    console.log('  cd ' + target);
-    console.log('  npm run test        # 跑回归(playwright test,不用开 AI)');
-    console.log('  # 让 AI 干活:用支持项目级 .mcp.json 的 AI 打开本工程,直接聊天即可');
-  } else {
-    console.log('  接下来:');
-    console.log('  cd ' + target);
-    console.log('  npm install');
-    console.log('  npm run test        # 跑回归(playwright test,不用开 AI)');
-    console.log('  # 让 AI 干活:用支持项目级 .mcp.json 的 AI 打开本工程,直接聊天即可');
   }
+  printProjectInfo(target, name, browser, extras, opts.install !== false);
+}
+
+// 项目信息总览:创建/安装完成后打印给测试人员看
+function printProjectInfo(target: string, name: string, browser: string, extras: string[], installed: boolean): void {
+  const bar = '='.repeat(56);
+  const thin = '-'.repeat(56);
+  const rootUrl = target.replace(/\\/g, '/');
+  const lines: string[] = [
+    '',
+    bar,
+    `  ${name} 测试项目已${installed ? '创建完成' : '创建(待 npm install)'}`,
+    bar,
+    `  项目路径   ${target}`,
+    `  主浏览器   ${browser}${extras.length ? `(+ ${extras.join(', ')})` : ''}`,
+    `  用例目录   test-cases/   放你已有的用例(Excel/XMind/Markdown/CSV/TXT)`,
+    `  回归用例   tests/        可执行用例(AI 生成)`,
+    `  测试报告   ${rootUrl}/result/report/index.html`,
+    `  MCP 连接   工程已带 .mcp.json,支持项目级 MCP 的 AI 打开即连`,
+    thin,
+    '  开始用:',
+    `  1. 把用例丢进 test-cases/`,
+    `  2. 用 AI 打开本工程,直接说需求,例如:`,
+    `     "把 test-cases/登录.xlsx 转成测试用例跑一遍,失败的给我分析根因"`,
+    `  3. 回归:cd ${target} && npm run test(不需要开 AI)`,
+    `  4. 登录:对话里报账号密码;验证码则首次 npm run login`,
+    installed ? '' : '  然后:npm install 安装依赖与浏览器',
+    bar,
+    ''
+  ];
+  console.log(lines.filter((l) => l !== '').join('\n'));
 }
 
 // 生成工程级 .mcp.json:支持项目级 MCP 的 harness 打开工程自动连接,测试人员无需手动启动
