@@ -131,6 +131,7 @@ function writePackageJson(target: string, name: string, browser: string, extras:
   const scripts: Record<string, string> = {
     test: 'playwright test',
     'test:headed': 'playwright test --headed',
+    login: 'node scripts/login.cjs',
     mcp: 'node mcp/server.cjs'
   };
   if (browsers.length) {

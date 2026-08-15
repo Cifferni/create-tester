@@ -27,18 +27,25 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure'
   },
-  projects: [projectFor(BROWSER)]
+  projects: [
+    // setup 先登录一次存 result/auth.json,业务用例共享登录态(整轮只登一次)
+    { name: 'setup', testMatch: /auth\.setup\.ts/ },
+    { ...projectFor(BROWSER), dependencies: ['setup'] }
+  ]
 });
 
 function projectFor(browser: string) {
   switch (browser) {
     case 'chrome':
-      return { name: 'chrome', use: { ...devices['Desktop Chrome'], channel: 'chrome' } };
+      return {
+        name: 'chrome',
+        use: { ...devices['Desktop Chrome'], channel: 'chrome', storageState: 'result/auth.json' }
+      };
     case 'firefox':
-      return { name: 'firefox', use: { ...devices['Desktop Firefox'] } };
+      return { name: 'firefox', use: { ...devices['Desktop Firefox'], storageState: 'result/auth.json' } };
     case 'webkit':
-      return { name: 'webkit', use: { ...devices['Desktop Safari'] } };
+      return { name: 'webkit', use: { ...devices['Desktop Safari'], storageState: 'result/auth.json' } };
     default:
-      return { name: 'chromium', use: { ...devices['Desktop Chrome'] } };
+      return { name: 'chromium', use: { ...devices['Desktop Chrome'], storageState: 'result/auth.json' } };
   }
 }
