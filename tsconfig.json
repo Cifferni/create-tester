@@ -4,12 +4,14 @@
     "module": "CommonJS",
     "moduleResolution": "node",
     "lib": ["ES2021"],
+    "outDir": "dist",
+    "rootDir": ".",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
     "resolveJsonModule": true,
     "forceConsistentCasingInFileNames": true,
-    "noEmit": true
+    "declaration": true
   },
-  "include": ["src/**/*.ts", "bin/**/*.ts"]
+  "include": ["bin/**/*.ts", "src/**/*.ts"]
 }

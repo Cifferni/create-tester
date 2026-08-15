@@ -1,31 +1,58 @@
 {
   "name": "create-tester",
-  "version": "0.3.3",
-  "description": "创建 tester 测试项目(脚手架 CLI,仅用于建项目)",
+  "version": "0.4.0",
+  "description": "tester 一体化:脚手架(npm create tester)+ 引擎(CLI/API/MCP 工具服务器),面向测试工程师的 AI 驱动页面测试",
+  "keywords": [
+    "testing",
+    "test-automation",
+    "playwright",
+    "e2e",
+    "ai-driven",
+    "mcp",
+    "cli",
+    "scaffold"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=20.6"
   },
   "bin": {
-    "create-tester": "bin/create-tester.cjs"
+    "create-tester": "dist/bin/create-tester.js",
+    "tester": "dist/bin/tester.js"
   },
+  "main": "dist/index.js",
   "files": [
-    "bin/",
-    "src/",
-    "template/"
+    "dist/"
   ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Cifferni/create-tester.git"
+  },
+  "homepage": "https://github.com/Cifferni/create-tester",
+  "bugs": {
+    "url": "https://github.com/Cifferni/create-tester/issues"
+  },
   "scripts": {
-    "start": "tsx src/index.ts",
-    "typecheck": "tsc --noEmit"
+    "start": "tsx bin/tester.ts",
+    "typecheck": "tsc --noEmit",
+    "build": "node scripts/build.cjs",
+    "prepublishOnly": "npm run build"
   },
   "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "@playwright/test": "^1.62.1",
     "commander": "^12.1.0",
+    "jiti": "^2.7.0",
+    "playwright": "^1.62.1",
     "prompts": "^2.4.2",
-    "tsx": "^4.19.0"
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz",
+    "zod": "^3.25 || ^4.0"
   },
   "devDependencies": {
     "@types/node": "^20.14.0",
     "@types/prompts": "^2.4.9",
+    "esbuild": "^0.28.2",
+    "tsx": "^4.19.0",
     "typescript": "^5.5.0"
   }
 }
