@@ -1,12 +1,12 @@
-// MCP 服务器:tester 作为工具服务器暴露给 AI harness(Codex / opencode / Claude 等)
-// 定位:不内置 AI,只暴露测试工程原语,AI 决策交给 harness。
-//   convert_case   test-cases/ 用例文件(xlsx/xmind/md/csv/txt)→ 结构化文本
-//   list_cases     列出 test-cases/ 下的用例文件
-//   snapshot       打开被测页面,返回可交互结构快照(供 harness 定位元素)
-//   list_specs     列出 tests/ 下已生成的 spec
-//   run_tests      跑 Playwright 测试,返回 JSON 结果
-//   failures       读报告,返回失败用例详情(供 harness 判断根因)
+// MCP 服务器(方案 A):页面操作交给官方 @playwright/mcp(browser_* 工具,含快照/点击/输入/断言),
+// 本 server 只暴露"测试工程专属工具"(用例读取/生成/跑测/报告/登录/env),AI 编排靠两套 server 配合。
+//   list_cases      列出 test-cases/ 下的用例文件
+//   convert_case    test-cases/ 用例文件(xlsx/xmind/md/csv/txt)→ 结构化文本
+//   generate_spec   用例 → spec 骨架
+//   run_tests       跑 Playwright 测试(后台),status/failures 轮询
+//   failures/status 读报告,返回失败详情/总览(供 harness 判断根因)
 // 启动: tester mcp (stdio transport,由 harness 以子进程方式拉起)
+// 注意:snapshot/inspect 等页面操作不再自研——用官方 @playwright/mcp 的 browser_snapshot/browser_find。
 
 import fs from 'fs';
 import path from 'path';
@@ -15,16 +15,21 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { readCaseFile } from './cases';
+import { formatSyntaxErrors } from './checkSyntax';
 import { closeBrowser } from './browser';
-import { launchBrowser } from './browser';
+import { loadPlugins } from './plugins';
 import { playwrightConfig } from './config';
-import { getPageSnapshot } from './pagesnapshot';
-import { startPlaywrightTest, runPlaywrightTest, parseJsonReport, summarizeJsonReport, failedSpecFiles } from './playwright';
-import type { BrowserName } from './types';
+import { startPlaywrightTest, summarizeJsonReport, failedSpecFiles } from './playwright';
 
 // 项目根目录:优先用 tester mcp <dir> 传的,缺省 process.cwd()
 function projectRoot(): string {
   return process.env.TESTER_PROJECT_ROOT || process.cwd();
+}
+
+// 当前账号的登录态文件名(多账号隔离,与 template/_login.ts 保持一致)
+function authFileName(): string {
+  const account = process.env.TESTER_ACCOUNT || 'default';
+  return `auth-${account}.json`;
 }
 
 function cwdResolve(p: string): string {
@@ -64,13 +69,20 @@ function runMCP(): void {
   const rootUrl = root.replace(/\\/g, '/');
   // 打印到 stderr:stdout 是 MCP 协议通道,不能污染
   console.error(`[tester] 工程根目录:${root}`);
-  console.error('[tester] MCP 连接配置(粘贴到 AI harness,如 .mcp.json):');
+  console.error('[tester] MCP 连接配置(粘贴到 AI harness,如 .mcp.json;两套 server 都要配):');
   console.error(JSON.stringify(
-    { mcpServers: { tester: { command: 'node', args: [`${rootUrl}/mcp/server.cjs`], cwd: rootUrl } } },
+    {
+      mcpServers: {
+        playwright: { command: 'npx', args: ['@playwright/mcp@latest', '--headless', '--config', `${rootUrl}/mcp/playwright-mcp.json`] },
+        tester: { command: 'node', args: [`${rootUrl}/mcp/server.cjs`], cwd: rootUrl }
+      }
+    },
     null,
     2
   ));
   const server = new McpServer({ name: 'tester', version: '0.5.6' });
+  // 插件体系:加载工程 plugin/ 目录的自定义插件(报告器/用例解析器/录制器)
+  const plugins = loadPlugins(root);
 
   server.tool(
     'list_cases',
@@ -84,87 +96,21 @@ function runMCP(): void {
 
   server.tool(
     'convert_case',
-    '把 test-cases/ 下的用例文件(xlsx/xmind/csv/md/txt)转成结构化文本;能识别"步骤/预期"列的表格会输出【前置/操作/预期/数据】。写 spec 时操作从"操作"来、断言从"预期"来,页面现状不等于预期',
+    '把 test-cases/ 下的用例文件(xlsx/xmind/csv/md/txt)转成结构化文本;能识别"步骤/预期"列的表格会输出【前置/操作/预期/数据】。写 spec 时操作从"操作"来、断言从"预期"来,页面现状不等于预期。自定义格式可由 plugin/ 的用例解析器插件扩展',
     { file: z.string().describe('test-cases/ 下的文件路径,如 test-cases/登录.xlsx') },
     ({ file }) => {
       const abs = cwdResolve(file);
       if (!fs.existsSync(abs)) return textResult(`文件不存在:${file}`);
+      // 插件用例解析器优先(自定义格式),没有命中才用内置解析
+      for (const p of plugins.caseParsers) {
+        try {
+          const out = p.parseCase?.(abs);
+          if (out) return textResult(out);
+        } catch {
+          // 单个插件失败不影响
+        }
+      }
       return textResult(readCaseFile(abs));
-    }
-  );
-
-  server.tool(
-    'snapshot',
-    '打开被测页面,返回当前页面的可交互结构快照(按钮/输入框/链接等),用于定位元素。默认 4000 字符省 token;大页面可传 scope 只快照某个区域,或 maxChars 调大',
-    {
-      url: z.string().optional().describe('要打开的页面地址,缺省用 BASE_URL / playwright.config.ts 的 baseURL'),
-      scope: z.string().optional().describe('CSS 选择器:只快照这个容器(如 .card-list),更精准更省 token'),
-      maxChars: z.number().optional().describe('返回字符上限,缺省 4000;想多看整个页面传大些(如 12000)')
-    },
-    async ({ url, scope, maxChars }) => {
-      const { baseURL, browser } = playwrightConfig(url);
-      // 复用 server 内的共享浏览器,只开关页面
-      const pw = await launchBrowser(browser as BrowserName, { headless: true });
-      const page = await pw.newPage();
-      // 捕获页面错误/崩溃,便于区分"app 崩了"还是"浏览器崩了"
-      const events: string[] = [];
-      page.on('pageerror', (err) => events.push(`pageerror: ${err.message}`));
-      page.on('crash', () => events.push('page crashed (渲染进程崩溃)'));
-      page.on('console', (msg) => {
-        if (msg.type() === 'error') events.push(`console.error: ${msg.text().slice(0, 300)}`);
-      });
-      try {
-        await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
-        const snapshot = await getPageSnapshot(page, { scope, maxChars });
-        const extra = events.length ? `\n\n--- 页面事件 ---\n${events.join('\n')}` : '';
-        return textResult(`页面地址:${baseURL}\n\n${snapshot}${extra}`);
-      } finally {
-        await page.close();
-      }
-    }
-  );
-
-  server.tool(
-    'inspect',
-    '只读探查页面 DOM:按 CSS 选择器返回匹配元素的 outerHTML/属性/文本,用于搞清楚某个按钮/图标到底是什么。不改动任何数据',
-    {
-      url: z.string().optional().describe('要打开的页面地址,缺省 BASE_URL'),
-      selector: z.string().describe('CSS 选择器,如 .provider-card .compact-actions button')
-    },
-    async ({ url, selector }) => {
-      const { baseURL, browser } = playwrightConfig(url);
-      const pw = await launchBrowser(browser as BrowserName, { headless: true });
-      const page = await pw.newPage();
-      try {
-        await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
-        await page.waitForSelector(selector, { timeout: 10000 }).catch(() => undefined);
-        const info = await page.evaluate(
-          (sel: string) => {
-            const els = (Array.from(document.querySelectorAll(sel)) as unknown[]).slice(0, 20);
-            return els.map((el) => {
-              const e = el as { tagName?: string; textContent?: string | null; outerHTML?: string; attributes?: { name: string; value: string }[] };
-              const attrs: Record<string, string> = {};
-              for (const a of Array.from(e.attributes || [])) attrs[a.name] = a.value;
-              return {
-                tag: (e.tagName || '').toLowerCase(),
-                attrs,
-                text: (e.textContent || '').trim().slice(0, 200),
-                outerHTML: (e.outerHTML || '').slice(0, 1500)
-              };
-            });
-          },
-          selector
-        );
-        if (!info.length) return textResult(`没有匹配 ${selector} 的元素(页面:${baseURL})`);
-        return textResult(
-          info
-            .map((i, idx) => `#${idx} <${i.tag}>\nattrs: ${JSON.stringify(i.attrs)}\ntext: ${i.text}\nhtml: ${i.outerHTML}`)
-            .join('\n\n')
-            .slice(0, 8000)
-        );
-      } finally {
-        await page.close();
-      }
     }
   );
 
@@ -180,57 +126,7 @@ function runMCP(): void {
       if (!re.test(text)) return textResult('未找到 baseURL 配置(playwright.config.ts 格式不匹配),请手动检查');
       const updated = text.replace(re, `baseURL: process.env.BASE_URL || '${url}'`);
       fs.writeFileSync(cfgFile, updated, 'utf8');
-      return textResult(`已把被测地址设为 ${url}(playwright.config.ts 的 baseURL)\n若设置了环境变量 BASE_URL 则优先于它;下次 snapshot/run_tests 生效`);
-    }
-  );
-
-  server.tool(
-    'verify_locators',
-    '跑前预检 spec 里的选择器:打开页面逐个探活,命中/未命中列表,避免空跑。支持 getByTestId/getByText/getByRole/locator(css)',
-    {
-      files: z.array(z.string()).optional().describe('要检查的 spec 文件,缺省 tests/ 全部'),
-      url: z.string().optional().describe('页面地址,缺省 BASE_URL')
-    },
-    async ({ files, url }) => {
-      const list = files && files.length ? files : defaultSpecFiles();
-      if (!list.length) return textResult('没有 spec 文件');
-      // 从 spec 源码提取选择器(方法 + 首参)
-      const re = /(getByTestId|getByText|getByRole|locator)\(\s*(['"])([^'"]*)\2/g;
-      const byFile = new Map<string, Array<{ method: string; val: string }>>();
-      for (const f of list) {
-        const src = fs.readFileSync(f, 'utf8');
-        const items: Array<{ method: string; val: string }> = [];
-        let m: RegExpExecArray | null;
-        while ((m = re.exec(src))) items.push({ method: m[1], val: m[3] });
-        if (items.length) byFile.set(f, items);
-      }
-      if (!byFile.size) return textResult('没有提取到可检查的选择器');
-      const { baseURL, browser } = playwrightConfig(url);
-      const pw = await launchBrowser(browser as BrowserName, { headless: true });
-      const page = await pw.newPage();
-      try {
-        await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
-        const out: string[] = [`检查页面:${baseURL}`];
-        for (const [file, items] of byFile) {
-          out.push(`\n【${path.basename(file)}】`);
-          for (const { method, val } of items) {
-            try {
-              const loc =
-                method === 'getByTestId' ? page.getByTestId(val)
-                : method === 'getByText' ? page.getByText(val)
-                : method === 'getByRole' ? page.getByRole(val as never)
-                : page.locator(val);
-              const n = await loc.count();
-              out.push(`${n > 0 ? '✓ 命中' : '✗ 未命中'} [${method}('${val}')] ${n > 0 ? `×${n}` : ''}`);
-            } catch (e) {
-              out.push(`⚠ 无效 [${method}('${val}')] ${(e as Error).message.slice(0, 80)}`);
-            }
-          }
-        }
-        return textResult(out.join('\n'));
-      } finally {
-        await page.close();
-      }
+      return textResult(`已把被测地址设为 ${url}(playwright.config.ts 的 baseURL)\n若设置了环境变量 BASE_URL 则优先于它;下次 run_tests 生效`);
     }
   );
 
@@ -257,18 +153,18 @@ function runMCP(): void {
 
   server.tool(
     'login',
-    '后台打开带界面浏览器做人工登录(验证码/短信场景):返回后请在浏览器里完成登录并关掉,再用 login_status 确认。无验证码时 auth.setup 会自动登录,一般不需要这个',
+    '后台打开带界面浏览器做人工登录(验证码/短信场景):返回后请在浏览器里完成登录并关掉,再用 login_status 确认。无验证码时 auth.setup 会自动登录,一般不需要这个。多账号用 TESTER_ACCOUNT 环境变量区分(缺省 default)',
     {},
     () => {
       const root = projectRoot();
-      const authFile = path.join(root, 'test-result', 'auth.json');
+      const authFile = path.join(root, 'test-result', authFileName());
       if (fs.existsSync(authFile)) return textResult(`已有登录态:${authFile},无需重新登录`);
       const { baseURL } = playwrightConfig();
       fs.mkdirSync(path.join(root, 'test-result'), { recursive: true });
       // detached + windowsHide:不阻塞 MCP 请求、不弹终端窗口;浏览器窗口会正常打开
       const child = spawn(
         'npx',
-        ['playwright', 'codegen', baseURL, '--save-storage=test-result/auth.json'],
+        ['playwright', 'codegen', baseURL, `--save-storage=test-result/${authFileName()}`],
         { cwd: root, detached: true, stdio: 'ignore', windowsHide: true, shell: true }
       );
       child.unref();
@@ -278,15 +174,15 @@ function runMCP(): void {
 
   server.tool(
     'login_status',
-    '检查人工登录是否完成(test-result/auth.json 是否已生成)',
+    `检查人工登录是否完成(test-result/${authFileName()} 是否已生成)`,
     {},
     () => {
-      const f = path.join(projectRoot(), 'test-result', 'auth.json');
+      const f = path.join(projectRoot(), 'test-result', authFileName());
       if (!fs.existsSync(f)) {
-        return textResult('未完成:test-result/auth.json 还没生成(等测试人员在浏览器里完成登录并关掉浏览器)');
+        return textResult(`未完成:test-result/${authFileName()} 还没生成(等测试人员在浏览器里完成登录并关掉浏览器)`);
       }
       const mtime = fs.statSync(f).mtime.toISOString();
-      return textResult(`已完成:test-result/auth.json(保存于 ${mtime}),登录态可复用,直接重跑测试`);
+      return textResult(`已完成:test-result/${authFileName()}(保存于 ${mtime}),登录态可复用,直接重跑测试`);
     }
   );
 
@@ -302,26 +198,38 @@ function runMCP(): void {
 
   server.tool(
     'run_tests',
-    '后台运行 Playwright 测试(默认 tests/ 全部),立即返回"运行中",跑完用 status/failures 轮询结果。注意:不提供同步等待——客户端 MCP 有请求超时,同步等待大测试必断。文件参数传相对路径,如 tests/login/登录.spec.ts',
+    '后台运行 Playwright 测试(默认 tests/ 全部),立即返回"运行中",跑完用 status/failures 轮询结果。注意:不提供同步等待——客户端 MCP 有请求超时,同步等待大测试必断。文件参数传相对路径,如 tests/login/登录.spec.ts。跑前自动用 esbuild 做语法预检,有语法错误的 spec 直接列出、不会启动测试。可用 grep 按标签/标题筛选(如 @smoke、登录)',
     {
       files: z.array(z.string()).optional().describe('要跑的 spec 文件列表,缺省跑全部'),
       headed: z.boolean().optional().describe('是否带界面执行,默认无头'),
-      workers: z.number().optional().describe('并行 worker 数,缺省用 config;提速用(需用例彼此隔离,否则会互踩)')
+      workers: z.number().optional().describe('并行 worker 数,缺省用 config;提速用(需用例彼此隔离,否则会互踩)'),
+      grep: z.string().optional().describe('只跑匹配的用例:传标签(如 @smoke)或标题关键字(如 登录),对应 Playwright --grep')
     },
-    ({ files, headed, workers }) => {
+    async ({ files, headed, workers, grep }) => {
       const list = files && files.length ? files : defaultSpecFiles();
       if (!list.length) return textResult(JSON.stringify({ error: '没有可运行的测试文件' }, null, 2));
       const root = projectRoot();
+      // 语法预检:先验 spec 能解析,避免把跑不起来的脚本交给 Playwright 空跑
+      const syntaxIssues: string[] = [];
+      for (const f of list) {
+        const errs = await formatSyntaxErrors(f);
+        if (errs) syntaxIssues.push(`${f}\n${errs}`);
+      }
+      if (syntaxIssues.length) {
+        return textResult(
+          `以下 spec 存在语法错误,已停止运行(请先修复再跑):\n\n${syntaxIssues.join('\n\n')}`
+        );
+      }
       // 清掉旧报告:让 status/failures 的"未找到报告"能区分"还在跑"
       try {
         fs.rmSync(path.join(root, 'test-result', 'test-results.json'), { force: true });
       } catch {
         // 忽略
       }
-      const { pid } = startPlaywrightTest(list, root, { headed, workers });
+      const { pid } = startPlaywrightTest(list, root, { headed, workers, grep });
       return textResult(
         JSON.stringify(
-          { status: 'running', pid, note: '测试在后台运行,用 status/failures 轮询结果(未找到报告=仍在跑)' },
+          { status: 'running', pid, grep: grep || undefined, note: '测试在后台运行,用 status/failures 轮询结果(未找到报告=仍在跑)' },
           null,
           2
         )
@@ -331,7 +239,7 @@ function runMCP(): void {
 
   server.tool(
     'failures',
-    '读取 test-result/test-results.json 报告,返回整轮全貌 {total,passed,skipped,failed} + 失败用例详情(含错误信息与 stdout/stderr 日志)。报告未生成说明仍在跑,应稍后轮询',
+    '读取 test-result/test-results.json 报告,返回整轮全貌 {total,passed,skipped,failed} + 失败用例详情(含错误分类[定位/断言/网络/超时/脚本/其他]、错误信息与 stdout/stderr 日志)。报告未生成说明仍在跑,应稍后轮询',
     { file: z.string().optional().describe('JSON 报告路径,默认 test-result/test-results.json') },
     ({ file }) => {
       const report = cwdResolve(file || 'test-result/test-results.json');
@@ -344,8 +252,15 @@ function runMCP(): void {
       if (!s.failures.length) {
         out.push('(没有失败用例)');
       } else {
+        // 错误分类汇总:定位/断言/网络/超时/脚本/其他 各多少
+        const byCat = new Map<string, number>();
         for (const f of s.failures) {
-          out.push(`\n【${f.title}】`);
+          const c = f.category || '其他';
+          byCat.set(c, (byCat.get(c) || 0) + 1);
+        }
+        out.push(`\n错误分类:${[...byCat.entries()].map(([c, n]) => `${c} ${n}`).join(' | ') || '无'}`);
+        for (const f of s.failures) {
+          out.push(`\n【${f.title}】[${f.category || '其他'}]`);
           if (f.error && f.error !== '(无错误信息)') out.push(f.error);
           if (f.stdout) out.push(`stdout:\n${f.stdout}`);
           if (f.stderr) out.push(`stderr:\n${f.stderr}`);
@@ -364,6 +279,14 @@ function runMCP(): void {
       if (!fs.existsSync(report)) return textResult(`未找到报告:${report}(测试可能仍在运行,稍后再查)`);
       const s = summarizeJsonReport(fs.readFileSync(report, 'utf8'));
       if (!s) return textResult('报告解析失败');
+      // 报告器插件:每轮结束触发(通知/归档等),失败也不阻塞结果返回
+      for (const p of plugins.reporters) {
+        try {
+          void p.onSummary?.(s);
+        } catch {
+          // 忽略
+        }
+      }
       const lines = [
         `通过 ${s.passed} / 失败 ${s.failed} / 跳过 ${s.skipped} / 共 ${s.total} / 耗时 ${s.durationMs}ms`,
         s.failed ? `失败用例:\n${s.failures.map((f) => `- ${f.title}`).join('\n')}` : '(全部通过)'
@@ -374,23 +297,32 @@ function runMCP(): void {
 
   server.tool(
     'retry_failed',
-    '后台重跑上一次报告中的失败用例(只重跑失败的 spec,不做全量),立即返回"运行中",用 status/failures 轮询。不做同步等待(客户端 MCP 有请求超时)',
+    '后台重跑上一次报告中的失败用例(只重跑失败的 spec,不做全量),立即返回"运行中",用 status/failures 轮询。不做同步等待(客户端 MCP 有请求超时)。跑前同样做 esbuild 语法预检。可用 grep 只重跑匹配标签/标题的失败用例',
     {
       headed: z.boolean().optional().describe('是否带界面执行,默认无头'),
-      workers: z.number().optional().describe('并行 worker 数,缺省用 config;提速用(需用例隔离)')
+      workers: z.number().optional().describe('并行 worker 数,缺省用 config;提速用(需用例隔离)'),
+      grep: z.string().optional().describe('只重跑匹配的用例(标签或标题关键字)')
     },
-    ({ headed, workers }) => {
+    async ({ headed, workers, grep }) => {
       const report = path.join(projectRoot(), 'test-result', 'test-results.json');
       if (!fs.existsSync(report)) return textResult('未找到上次报告:test-result/test-results.json(先跑一次 run_tests)');
       const files = failedSpecFiles(fs.readFileSync(report, 'utf8'));
       if (!files.length) return textResult('上次报告中没有失败用例,无需重跑');
+      const syntaxIssues: string[] = [];
+      for (const f of files) {
+        const errs = await formatSyntaxErrors(f);
+        if (errs) syntaxIssues.push(`${f}\n${errs}`);
+      }
+      if (syntaxIssues.length) {
+        return textResult(`以下失败 spec 存在语法错误,已停止重跑(请先修复再跑):\n\n${syntaxIssues.join('\n\n')}`);
+      }
       try {
         fs.rmSync(path.join(projectRoot(), 'test-result', 'test-results.json'), { force: true });
       } catch {}
-      const { pid } = startPlaywrightTest(files, projectRoot(), { headed, workers });
+      const { pid } = startPlaywrightTest(files, projectRoot(), { headed, workers, grep });
       return textResult(
         JSON.stringify(
-          { status: 'running', pid, reran: files.length, note: '只重跑上次失败的 spec,用 status/failures 轮询' },
+          { status: 'running', pid, reran: files.length, grep: grep || undefined, note: '只重跑上次失败的 spec,用 status/failures 轮询' },
           null,
           2
         )
@@ -400,7 +332,7 @@ function runMCP(): void {
 
   server.tool(
     'generate_spec',
-    '根据 test-cases/ 下的用例文件生成一个 Playwright spec 骨架(含 apiRecorder/断言模板),写到 tests/<feature>/。AI 再用 snapshot 看页面结构补选择器,然后 run_tests',
+    '根据 test-cases/ 下的用例文件生成一个 Playwright spec 骨架(含 apiRecorder/断言模板),写到 tests/<feature>/。AI 再用官方 browser_snapshot 看页面结构补选择器,然后 run_tests',
     {
       case: z.string().describe('test-cases/ 下的用例文件,如 test-cases/登录.xlsx'),
       feature: z.string().optional().describe('功能模块名,决定 tests/ 下子目录;缺省用用例文件名'),
@@ -415,7 +347,6 @@ function runMCP(): void {
       const targetDir = path.join(projectRoot(), 'tests', featureName);
       const targetFile = path.join(targetDir, `${sanitizePath(base) || 'case'}.spec.ts`);
       fs.mkdirSync(targetDir, { recursive: true });
-      const rel = path.relative(path.dirname(targetFile), path.join(projectRoot(), 'mcp', 'api.cjs')).replace(/\\/g, '/');
       const caseRef = path.relative(projectRoot(), abs).replace(/\\/g, '/');
       const guide = text
         .split(/\r?\n/)
@@ -426,9 +357,9 @@ function runMCP(): void {
         .join('\n');
       const goto = url
         ? `  await page.goto('${url}');`
-        : `  // await page.goto('/');  // 用 snapshot 看结构后填路径`;
+        : `  // await page.goto('/');  // 用 browser_snapshot 看结构后填路径`;
       const skeleton = `import { test, expect } from '@playwright/test';
-import { apiRecorder, expectApi } from '${rel}';
+import { apiRecorder, expectApi, waitForVisible, waitForClickable, waitForText, waitForURL, selfHeal, mockRoute, tamperResponse } from '@create-tester/core';
 
 // 用例来源: ${caseRef}
 ${guide}
@@ -436,21 +367,34 @@ ${guide}
 // 1. 每个用例必须有"业务结果断言",禁止只点不验。
 // 2. 断言依据 = 用例文档的"预期"列,不是页面现状;页面与预期不符时报告,不要改断言迁就页面。
 // 3. 需要登录时:import { ensureLoggedIn } from '../../_login'; 用例开头 await ensureLoggedIn(page);
+// 4. 禁止 page.waitForTimeout(硬编码延时):要等就用 waitForVisible/waitForClickable/waitForText/waitForURL,等状态不等时间。
+// 5. 标签分组:按需加 tag 供选择性执行,如 test('标题', { tag: ['@smoke'] }, ...);跑时 run_tests {grep: '@smoke'} 只跑冒烟。
 
 test('${firstMeaningfulLine(text) || base}', async ({ page }) => {
   const api = apiRecorder(page);
 ${goto}
 
-  // ── 操作:用 snapshot 看结构后补定位器(优先 data-testid → getByRole → class) ──
+  // ── 操作:用 browser_snapshot 看结构后补定位器(优先级:data-testid → getByRole → css/class → getByText 唯一兜底) ──
   // 例: await page.getByTestId('username').fill('test01');
   //     await page.getByTestId('login-submit').click();
   //     await page.getByRole('button', { name: '保存' }).click();
+
+  // ── 等待(禁止 waitForTimeout,等状态不等时间) ──
+  // 元素就绪前 Playwright 会自动等,一般不用写等待。确实要等时用智能等待:
+  // 例: await waitForVisible(page.getByTestId('save-btn'));
+  //     await waitForClickable(page.getByTestId('submit'));
+  //     await waitForText(page, '操作成功');
+  //     await waitForURL(page, /\/home/);
 
   // ── 业务断言(至少满足一条,严禁只点不验) ──
   // 接口层(推荐,最硬):操作触发的接口断言业务码/字段/状态码
   // 例: await expectApi(api, '/api/login').code('0');
   //     await expectApi(api, '/api/login').field('data.token').notEmpty();
   //     await expectApi(api, '/api/login').status(200);
+  // 字段断言扩展:正则/数组包含/区间
+  //     await expectApi(api, '/api/order').field('data.orderNo').matches(/^SO\d+$/);
+  //     await expectApi(api, '/api/order').field('data.items').containsValue('SKU-001');
+  //     await expectApi(api, '/api/order').field('data.total').between(100, 999);
   // 页面层:结果必须可观察(跳转/文案/元素状态/值)
   // 例: await expect(page).toHaveURL(/\/home/);
   //     await expect(page.getByText('保存成功')).toBeVisible();
@@ -458,10 +402,26 @@ ${goto}
 
   // ── 环境数据(改数据类用例) ──
   // 造数据 + 用后清理;判断新增/删除用计数对比(namesBefore/namesAfter),不要靠名字唯一。
+
+  // ── 自愈(首选选择器不稳时用) ──
+  // const saveBtn = await selfHeal(page, ['save-btn', '保存', 'button:has-text("保存")']);
+  // await saveBtn.click();   // 按候选顺序自动探测,第一个命中即用
+
+  // ── 接口 mock/篡改(造数据、模拟异常响应;真回归不用,保持诚实) ──
+  // await mockRoute(page, '**/api/login', { body: { code: '0', data: { token: 'mock' } } });
+  // await tamperResponse(page, '**/api/order', async (route) => route.fulfill({ status: 500 }));
+
+  // ── 数据驱动(多组参数循环,写在文件顶层,不在单个 test 内) ──
+  // 把测试数据放同目录 data.csv(第一行表头,如 用户名,密码,期望),然后在 spec 顶层循环:
+  // import { readDataRows } from '@create-tester/core';
+  // const data = readDataRows(__dirname + '/data.csv');
+  // for (const row of data.rows) {
+  //   test(\`登录 \${row['用户名']}\`, async ({ page }) => { ... 用 row['密码'] ... });
+  // }
 });
 `;
       fs.writeFileSync(targetFile, skeleton, 'utf8');
-      return textResult(`已生成:${targetFile}\n用 snapshot 看页面结构补选择器、补业务断言,然后 run_tests 或 retry_failed`);
+      return textResult(`已生成:${targetFile}\n用 browser_snapshot 看页面结构补选择器、补业务断言,然后 run_tests 或 retry_failed`);
     }
   );
 

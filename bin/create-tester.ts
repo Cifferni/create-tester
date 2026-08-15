@@ -79,7 +79,6 @@ async function main(opts: Options): Promise<void> {
   writePackageJson(target, name, browser, extras);
   setBrowser(target, browser);
   writeMcpJson(target);
-  writeEngineManifest(target);
 
   console.log(`[create-tester] 已创建测试项目:${target}`);
   console.log(`[create-tester] 主浏览器:${browser}${browser === 'chrome' ? '(系统 Chrome,免下载)' : ''}`);
@@ -123,26 +122,21 @@ function printProjectInfo(target: string, name: string, browser: string, extras:
   console.log(lines.filter((l) => l !== '').join('\n'));
 }
 
-// 生成工程级 .mcp.json:支持项目级 MCP 的 harness 打开工程自动连接,测试人员无需手动启动
+// 生成工程级 .mcp.json:支持项目级 MCP 的 harness 打开工程自动连接两套 server。
+//  playwright:官方 @playwright/mcp,负责浏览器操作(快照/点击/输入/断言)
+//  tester:    自研测试工程工具(用例读取/生成/跑测/报告/登录/env)
 function writeMcpJson(target: string): void {
   const rootUrl = target.replace(/\\/g, '/');
   const mcp = {
     mcpServers: {
+      playwright: {
+        command: 'npx',
+        args: ['@playwright/mcp@latest', '--headless', '--config', `${rootUrl}/mcp/playwright-mcp.json`]
+      },
       tester: { command: 'node', args: [`${rootUrl}/mcp/server.cjs`], cwd: rootUrl }
     }
   };
   fs.writeFileSync(path.join(target, '.mcp.json'), JSON.stringify(mcp, null, 2) + '\n', 'utf8');
-}
-
-// 引擎文件清单:upgrade 按它先删旧引擎文件再装新的,避免模板重构后残留/冲突
-const ENGINE_FILES = ['mcp/server.cjs', 'mcp/api.cjs', 'mcp/api.d.cts'];
-
-function writeEngineManifest(target: string): void {
-  fs.writeFileSync(
-    path.join(target, '.engine-manifest.json'),
-    JSON.stringify({ engine: ENGINE_FILES }, null, 2) + '\n',
-    'utf8'
-  );
 }
 
 function copyTemplate(templateDir: string, target: string): void {
@@ -174,9 +168,11 @@ function writePackageJson(target: string, name: string, browser: string, extras:
     private: true,
     scripts,
     devDependencies: {
-      '@modelcontextprotocol/sdk': '^1.30.0',
+      '@create-tester/core': '^0.5.6',
+      '@playwright/mcp': '^0.0.79',
       '@playwright/test': PLAYWRIGHT_TEST_VERSION,
       playwright: '^1.49.1',
+      esbuild: '^0.28.2',
       jiti: '^2.7.0',
       zod: '^3.25 || ^4.0',
       xlsx: 'https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz'
@@ -210,50 +206,45 @@ function readAllStdin(): Promise<string> {
 }
 
 // 升级已建的测试工程:在工程根目录跑 `npx create-tester@latest upgrade`
-// 用最新版脚手架覆盖引擎文件(mcp/server.cjs、api.cjs),不碰用户可能改过的文件。
+// 引擎核心已拆为 @create-tester/core 依赖,升级=更新依赖版本(npm install @create-tester/core@latest),
+// 不再覆盖任何文件,也不会触碰用户改过的配置/脚本。
 program
   .command('upgrade')
-  .description('升级当前测试工程到最新引擎(按 .engine-manifest.json 先清旧引擎文件再装新的;不覆盖你改过的文件)')
-  .action(() => {
+  .description('升级当前测试工程到最新引擎(更新 @create-tester/core 依赖,不覆盖你改过的任何文件)')
+  .option('--no-install', '只改 package.json 版本号,不执行 npm install')
+  .action((opts: { install?: boolean }) => {
     const root = process.cwd();
-    const srcMcp = path.join(__dirname, '..', 'template', 'mcp');
-    const manifestFile = path.join(root, '.engine-manifest.json');
-    // 1) 按 manifest 清掉旧引擎文件(模板重命名/移除的文件不会残留)
-    const oldEngine: string[] = [];
-    try {
-      const m = JSON.parse(fs.readFileSync(manifestFile, 'utf8')) as { engine?: string[] };
-      oldEngine.push(...(m.engine || []));
-    } catch {
-      // 无 manifest(老工程):回退到已知清单
-      oldEngine.push(...ENGINE_FILES);
+    const pkgFile = path.join(root, 'package.json');
+    if (!fs.existsSync(pkgFile)) {
+      console.error('[upgrade] 未找到 package.json(请在测试工程根目录运行)');
+      process.exit(1);
     }
-    for (const f of oldEngine) {
-      const p = path.join(root, f);
-      if (fs.existsSync(p)) {
-        fs.rmSync(p, { force: true });
-        console.log(`[upgrade] 已清理旧引擎文件 ${f}`);
-      }
+    const pkg = JSON.parse(fs.readFileSync(pkgFile, 'utf8')) as {
+      devDependencies?: Record<string, string>;
+      dependencies?: Record<string, string>;
+    };
+    // 找到 @create-tester/core 的声明位置(devDependencies 优先)
+    if (pkg.devDependencies?.['@create-tester/core'] === undefined && pkg.dependencies?.['@create-tester/core'] === undefined) {
+      console.error('[upgrade] 当前工程未声明 @create-tester/core,无需升级');
+      process.exit(0);
     }
-    // 2) 装最新引擎
-    for (const f of ENGINE_FILES) {
-      const s = path.join(srcMcp, path.basename(f));
-      const d = path.join(root, f);
-      if (fs.existsSync(s)) {
-        fs.mkdirSync(path.dirname(d), { recursive: true });
-        fs.copyFileSync(s, d);
-        console.log(`[upgrade] 已安装引擎 ${f}`);
-      }
+    if (opts.install === false) {
+      pkg.devDependencies!['@create-tester/core'] = 'latest';
+      fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
+      console.log('[upgrade] 已把 @create-tester/core 版本号改为 latest,请执行 npm install');
+      process.exit(0);
     }
-    // env-reset.cjs:不存在才补(用户可能自定义过)
-    const erD = path.join(root, 'mcp', 'env-reset.cjs');
-    if (fs.existsSync(path.join(srcMcp, 'env-reset.cjs')) && !fs.existsSync(erD)) {
-      fs.mkdirSync(path.dirname(erD), { recursive: true });
-      fs.copyFileSync(path.join(srcMcp, 'env-reset.cjs'), erD);
-      console.log('[upgrade] 已新增 mcp/env-reset.cjs');
-    }
-    // 3) 更新 manifest
-    writeEngineManifest(root);
-    console.log('[upgrade] 完成。未覆盖你改过的文件(_login.ts/auth.setup.ts/playwright.config.ts/specs/env-reset.cjs)。');
+    // 正常路径:直接 npm install 最新版(依赖版本管理,引擎文件不动)
+    const child = spawn('npm', ['install', '@create-tester/core@latest', '--save-dev'], {
+      cwd: root,
+      stdio: 'inherit',
+      shell: true,
+      windowsHide: true
+    });
+    child.on('close', (code) => {
+      console.log('[upgrade] 引擎已升级到最新。未覆盖你改过的任何文件(配置/脚本/specs)。');
+      process.exit(code ?? 0);
+    });
   });
 
 program

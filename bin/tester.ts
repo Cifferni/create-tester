@@ -10,7 +10,8 @@ import { spawn } from 'child_process';
 import { program } from 'commander';
 import pkg from '../package.json';
 import { initProject } from '../src/init';
-import { runPlaywrightTestPassthrough } from '../src/playwright';
+import { runPlaywrightTestPassthrough } from '@create-tester/core';
+import { startWebView } from '@create-tester/core';
 
 program
   .name('tester')
@@ -43,9 +44,9 @@ program
     const root = path.resolve(dir || process.cwd());
     // 工具按 projectRoot 读 test-cases/、tests/、test-result/,不依赖 harness 的 cwd
     process.env.TESTER_PROJECT_ROOT = root;
-    // 连接配置由 src/mcp 启动时打印到 stderr(node mcp/server.cjs 与 tester mcp 一致)
+    // 连接配置由 core mcp 启动时打印到 stderr(node mcp/server.cjs 与 tester mcp 一致)
     // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require('../src/mcp');
+    require('@create-tester/core/dist/mcp/server.cjs');
   });
 
 program
@@ -55,6 +56,21 @@ program
   .action(async (names?: string[]) => {
     const list = names && names.length ? names : ['chromium'];
     await runPlaywrightInstall(list);
+  });
+
+program
+  .command('view')
+  .description('启动只读 Web 查看面板(展示 test-result 测试结果,浏览器打开后自动刷新)')
+  .option('-p, --port <number>', '监听端口,默认 8321')
+  .action(async (opts: { port?: string }) => {
+    const root = process.cwd();
+    try {
+      const { url } = await startWebView({ projectRoot: root, port: Number(opts.port) || 8321 });
+      console.log(`[tester] 测试结果面板已启动:${url}(只读;Ctrl+C 停止)`);
+    } catch (e) {
+      console.error(`[tester] 面板启动失败:${(e as Error).message}(端口被占用可换 -p)`);
+      process.exit(1);
+    }
   });
 
 program

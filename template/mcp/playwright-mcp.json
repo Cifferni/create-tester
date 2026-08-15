@@ -1,0 +1,27 @@
+{
+  "browser": {
+    "browserName": "chromium",
+    "isolated": true,
+    "contextOptions": {
+      "storageState": "test-result/auth.json"
+    }
+  },
+  "capabilities": [
+    "core",
+    "network"
+  ],
+  "testIdAttribute": "data-testid",
+  "snapshot": {
+    "mode": "full",
+    "boxes": false
+  },
+  "network": {
+    "allowedOrigins": [
+      "*"
+    ]
+  },
+  "timeouts": {
+    "action": 5000,
+    "navigation": 30000
+  }
+}

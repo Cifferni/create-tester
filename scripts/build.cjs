@@ -1,13 +1,14 @@
 // 构建脚本:esbuild 打包
-//   bin/create-tester.ts        → dist/bin/create-tester.js     (脚手架 CLI,带 shebang)
-//   src/mcp.ts                  → dist/template/mcp/server.cjs  (工程内 MCP server,引擎整体内联,依赖 external)
-//   src/index.ts                → dist/template/mcp/api.cjs     (工程内断言 API,spec 直接 import)
-//   template/ 其余              → dist/template/(create 建项目时拷给用户)
-// 生成的测试项目完全自包含:引擎代码在 mcp/,不依赖 create-tester 包。
+//   core/src 引擎 → core/dist/api.cjs + core/dist/mcp/server.cjs  (由 core/scripts/build.cjs 负责,先构建)
+//   bin/create-tester.ts → dist/bin/create-tester.js            (脚手架 CLI,带 shebang)
+//   bin/tester.ts        → dist/bin/tester.js                   (手动 CLI)
+//   template/            → dist/template/                       (薄模板:配置 + 业务脚本)
+// 生成的测试项目依赖 @create-tester/core(npm 依赖版本管理),不再内嵌引擎文件。
 
 const { build } = require('esbuild');
 const fs = require('fs');
 const path = require('path');
+const { spawnSync } = require('child_process');
 
 const root = path.join(__dirname, '..');
 const dist = path.join(root, 'dist');
@@ -26,16 +27,18 @@ async function buildBin(entry, outfile) {
 }
 
 (async () => {
-  // 脚手架 CLI + 手动 CLI(create-tester 自带,项目内自包含不依赖)
+  // 0) 先构建 core 引擎包(脚手架/手动 CLI 都要用它)
+  const core = spawnSync(process.execPath, [path.join(root, 'core', 'scripts', 'build.cjs')], {
+    cwd: root,
+    stdio: 'inherit'
+  });
+  if (core.status !== 0) process.exit(core.status ?? 1);
+
+  // 1) 脚手架 CLI + 手动 CLI
   await buildBin('bin/create-tester.ts', path.join(dist, 'bin', 'create-tester.js'));
   await buildBin('bin/tester.ts', path.join(dist, 'bin', 'tester.js'));
 
-  // 工程内 MCP server(引擎整体内联进一个自包含文件)
-  await build({ ...common, entryPoints: ['src/mcp.ts'], outfile: path.join(dist, 'template', 'mcp', 'server.cjs'), banner: { js: '#!/usr/bin/env node' } });
-
-  // 工程内断言 API(spec: import { apiRecorder } from '../mcp/api.cjs')
-  await build({ ...common, entryPoints: ['src/index.ts'], outfile: path.join(dist, 'template', 'mcp', 'api.cjs') });
-
+  // 2) 拷薄模板(配置 + 业务脚本;mcp/server.cjs 是 require core 的薄壳)
   fs.mkdirSync(path.join(dist, 'template'), { recursive: true });
   fs.cpSync(path.join(root, 'template'), path.join(dist, 'template'), { recursive: true });
   // npm 打包默认排除 .gitignore,用 _gitignore 命名使其进入发布包(create 时再转回)
@@ -44,7 +47,7 @@ async function buildBin(entry, outfile) {
   if (fs.existsSync(distGitignore) && !fs.existsSync(distGitignoreRenamed)) {
     fs.renameSync(distGitignore, distGitignoreRenamed);
   }
-  console.log('[build] 脚手架 + mcp/ 引擎(server.cjs/api.cjs)打包完成,template/ 已拷入 dist/');
+  console.log('[build] core 引擎 + 脚手架 CLI + 薄模板打包完成');
 })().catch((e) => {
   console.error(e);
   process.exit(1);

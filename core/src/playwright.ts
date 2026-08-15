@@ -35,7 +35,7 @@ function spawnCapture(args: string[], cwd: string): Promise<{ code: number | nul
 export function startPlaywrightTest(
   files: string[],
   cwd: string,
-  opts: { headed?: boolean; workers?: number } = {}
+  opts: { headed?: boolean; workers?: number; grep?: string } = {}
 ): { pid: number } {
   const cli = playwrightTestCli(cwd);
   if (!cli) throw new Error('未找到 @playwright/test,请先 npm install');
@@ -43,6 +43,7 @@ export function startPlaywrightTest(
   const args: string[] = [cli, 'test', '--output=test-result/output'];
   if (opts.workers) args.push(`--workers=${opts.workers}`);
   if (opts.headed) args.push('--headed');
+  if (opts.grep) args.push(`--grep=${opts.grep}`);
   args.push(...files);
   // detached + stdio ignore:不受 server 生命周期影响,也不会因管道满而阻塞
   // windowsHide:Windows 上 detached 默认会新建一个控制台窗口,藏掉它(否则每次 run_tests 都弹一个终端)
@@ -55,7 +56,7 @@ export function startPlaywrightTest(
 export async function runPlaywrightTest(
   files: string[],
   cwd: string,
-  opts: { timeoutMs?: number; headed?: boolean; workers?: number } = {}
+  opts: { timeoutMs?: number; headed?: boolean; workers?: number; grep?: string } = {}
 ): Promise<{ failures: TestFailure[]; raw: string }> {
   const cli = playwrightTestCli(cwd);
   if (!cli) throw new Error('未找到 @playwright/test,请先 npm install');
@@ -69,6 +70,7 @@ export async function runPlaywrightTest(
   ];
   if (opts.workers) args.push(`--workers=${opts.workers}`);
   if (opts.headed) args.push('--headed');
+  if (opts.grep) args.push(`--grep=${opts.grep}`);
   args.push(...files);
   const timeoutMs = opts.timeoutMs ?? 180000;
   const timer = setTimeout(() => {
@@ -100,6 +102,21 @@ function joinLines(arr: Array<{ text?: string }> | undefined, limit: number): st
   return arr.map((x) => x.text || '').join('').slice(0, limit);
 }
 
+import type { FailureCategory } from './types';
+
+// 失败原因分类:按错误信息关键词判断,方便测试人员/ AI 一眼知道"挂在哪一层"。
+// 优先级:超时 > 网络 > 定位 > 断言 > 脚本。
+export function classifyFailure(error: string): FailureCategory {
+  const e = error || '';
+  const has = (patterns: RegExp): boolean => patterns.test(e);
+  if (has(/timed out|timeout|exceeded|Timed Out|超时/i)) return '超时';
+  if (has(/net::|ERR_|Failed to fetch|ECONN|network error|无法访问|网络/i)) return '网络';
+  if (has(/strict mode violation|waiting for selector|waiting for locator|element is not attached|Element not found|no element|not visible|не найден|未找到元素|定位/i)) return '定位';
+  if (has(/expect\(|expect\s|assert|Expected|Received|toEqual|toBe|contain/i)) return '断言';
+  if (has(/TypeError|ReferenceError|SyntaxError|is not a function|Cannot read|Undefined/i)) return '脚本';
+  return '其他';
+}
+
 export function parseJsonReport(raw: string): TestFailure[] {
   const failures: TestFailure[] = [];
   let data: { suites?: unknown[] } | null = null;
@@ -116,10 +133,12 @@ export function parseJsonReport(raw: string): TestFailure[] {
         for (const t of sp.tests || []) {
           const result = t.results?.[t.results.length - 1];
           if (result?.status === 'failed' || t.status === 'failed' || result?.status === 'timedOut') {
+            const errMsg = result?.error?.message || t.error?.message || '(无错误信息)';
             failures.push({
               // 报告里用例标题在 spec.title(tests[] 没有 title 字段)
               title: sp.title || t.title || '',
-              error: result?.error?.message || t.error?.message || '(无错误信息)',
+              error: errMsg,
+              category: classifyFailure(errMsg),
               // 透出每条用例的 console 输出(只给开头一段,诊断看头部足够,省 token)
               stdout: joinLines(result?.stdout, 600),
               stderr: joinLines(result?.stderr, 400)

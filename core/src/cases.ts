@@ -23,6 +23,52 @@ export function readCaseFile(file: string): string {
   }
 }
 
+// ── 数据驱动 ──
+// 读 Excel/CSV 为"表头 + 数据行"的结构化数据,供 spec 里 for 循环跑多组参数。
+// 数据驱动用例:把测试数据放 data.xlsx(第一行表头,后面每行一组参数),spec 循环取用。
+export interface DataTable {
+  headers: string[];
+  rows: Record<string, string>[];
+}
+
+export function readDataRows(file: string): DataTable {
+  const ext = path.extname(file).toLowerCase();
+  const cellRows: string[][] =
+    ext === '.csv'
+      ? fs
+          .readFileSync(file, 'utf8')
+          .split(/\r?\n/)
+          .filter((l) => l.trim())
+          .map(parseCsvLineCells)
+      : parseExcelCellRows(file);
+  const clean = cellRows.filter((r) => r.some((c) => c.trim() !== ''));
+  if (!clean.length) return { headers: [], rows: [] };
+  const headers = clean[0].map((h) => h.trim());
+  const rows = clean
+    .slice(1)
+    .map((r) => {
+      const obj: Record<string, string> = {};
+      headers.forEach((h, i) => {
+        if (h) obj[h] = (r[i] ?? '').trim();
+      });
+      return obj;
+    })
+    .filter((r) => Object.values(r).some((v) => v !== ''));
+  return { headers, rows };
+}
+
+function parseExcelCellRows(file: string): string[][] {
+  // 动态加载,避免在非 Excel 场景强制依赖
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const XLSX = require('xlsx') as typeof import('xlsx');
+  const wb = XLSX.readFile(file, { cellDates: false });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, raw: false });
+  return (rows as unknown[][]).map((r) =>
+    (r || []).map((c) => String(c ?? '').replace(/\s+/g, ' ').trim())
+  );
+}
+
 // ---------- 语义结构化 ----------
 // 识别表格类用例(Excel/Markdown/CSV)的列角色,输出【前置/操作/预期/数据】,
 // 让 AI 生成 spec 时"操作从步骤来、断言从预期来",提高确定性、避免把页面现状当预期。

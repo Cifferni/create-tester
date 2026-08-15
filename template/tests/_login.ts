@@ -2,20 +2,39 @@
 // 测试人员不需要改这个文件。
 import { type Page } from '@playwright/test';
 
-// ── 测试账号(AI 按测试人员对话内容填写) ──
-export const TEST_USER = 'test01';
-export const TEST_PASSWORD = '123456';
+// ── 测试账号(AI 按测试人员对话内容填写;支持多账号,用 key 区分) ──
+// 默认账号是 default;要隔离多账号,加新 key 并让用例通过 TESTER_ACCOUNT 环境变量切换。
+export const TEST_ACCOUNTS: Record<string, { user: string; password: string }> = {
+  default: { user: 'test01', password: '123456' },
+  // admin: { user: 'admin01', password: 'admin@123' },   // 例:第二个账号
+};
 
-// ── 登录流程(AI 用 snapshot 看登录页结构后,把下面的选择器/跳转路径调整成实际值) ──
+// 当前账号:由 TESTER_ACCOUNT 环境变量选择,缺省 default。用于 storageState 文件命名,避免多账号互相覆盖。
+export function currentAccount(): string {
+  const name = process.env.TESTER_ACCOUNT || 'default';
+  return TEST_ACCOUNTS[name] ? name : 'default';
+}
+
+export function currentCredentials(): { user: string; password: string } {
+  return TEST_ACCOUNTS[currentAccount()];
+}
+
+// 当前账号的登录态文件名(test-result/auth-<account>.json),多账号互不覆盖
+export function authFileName(): string {
+  return `test-result/auth-${currentAccount()}.json`;
+}
+
+// ── 登录流程(AI 用 browser_snapshot 看登录页结构后,把下面的选择器/跳转路径调整成实际值) ──
 const LOGIN_URL = '/login';
 const AFTER_LOGIN = '/home';
 
 // 每个用例开头调用:已登录就秒过,发现未登录自动重登
 export async function ensureLoggedIn(page: Page): Promise<void> {
+  const { user, password } = currentCredentials();
   await page.goto('/');
   if (new URL(page.url()).pathname.includes(LOGIN_URL)) {
-    await page.getByTestId('username').fill(TEST_USER);
-    await page.getByTestId('password').fill(TEST_PASSWORD);
+    await page.getByTestId('username').fill(user);
+    await page.getByTestId('password').fill(password);
     await page.getByTestId('login-submit').click();
     await page.waitForURL((u) => u.pathname.includes(AFTER_LOGIN));
   }
