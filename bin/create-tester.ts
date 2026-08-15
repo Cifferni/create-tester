@@ -197,6 +197,34 @@ function readAllStdin(): Promise<string> {
   });
 }
 
+// 升级已建的测试工程:在工程根目录跑 `npx create-tester@latest upgrade`
+// 用最新版脚手架覆盖引擎文件(mcp/server.cjs、api.cjs),不碰用户可能改过的文件。
+program
+  .command('upgrade')
+  .description('升级当前测试工程到最新引擎(更新 mcp/server.cjs、api.cjs;不覆盖你改过的文件)')
+  .action(() => {
+    const root = process.cwd();
+    const srcMcp = path.join(__dirname, '..', 'template', 'mcp');
+    // 引擎文件:总是覆盖
+    for (const f of ['server.cjs', 'api.cjs', 'api.d.cts']) {
+      const s = path.join(srcMcp, f);
+      const d = path.join(root, 'mcp', f);
+      if (fs.existsSync(s)) {
+        fs.mkdirSync(path.dirname(d), { recursive: true });
+        fs.copyFileSync(s, d);
+        console.log(`[upgrade] 已更新 mcp/${f}`);
+      }
+    }
+    // env-reset.cjs:不存在才补(用户可能自定义过)
+    const erD = path.join(root, 'mcp', 'env-reset.cjs');
+    if (fs.existsSync(path.join(srcMcp, 'env-reset.cjs')) && !fs.existsSync(erD)) {
+      fs.mkdirSync(path.dirname(erD), { recursive: true });
+      fs.copyFileSync(path.join(srcMcp, 'env-reset.cjs'), erD);
+      console.log('[upgrade] 已新增 mcp/env-reset.cjs');
+    }
+    console.log('[upgrade] 完成。未覆盖你改过的文件(_login.ts/auth.setup.ts/playwright.config.ts/specs)。');
+  });
+
 program
   .name('create-tester')
   .description('创建 tester 测试项目(脚手架)')

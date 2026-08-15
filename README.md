@@ -57,6 +57,7 @@ npm run test                  # 跑回归(playwright test,不用开 AI)
 
 ```
 create-tester                 # 脚手架:建测试项目
+create-tester upgrade         # 升级当前工程到最新引擎(在工程根目录跑)
 tester init                   # 初始化目录规范(幂等)
 tester run                    # 运行测试(透传 playwright test)
 tester mcp                    # 启动 MCP stdio server,打印可粘贴配置
@@ -64,6 +65,15 @@ tester install-browsers       # 安装 Playwright 浏览器(postinstall 自动�
 ```
 
 > 所有命令支持 `--help`(如 `create-tester --help`、`tester mcp --help`)、`--version`。
+
+## 升级
+
+- **脚手架本身**:全局装的可 `npm i -g create-tester@latest`;用 `npm create`/`npx` 的每次都自动用最新版,不用手动升。
+- **已建的测试工程**(引擎自包含在 `mcp/`,是建项目那刻的快照):在工程根目录跑
+  ```bash
+  npx create-tester@latest upgrade
+  ```
+  会用最新引擎更新 `mcp/server.cjs`、`mcp/api.cjs`;**不覆盖你改过的文件**(`_login.ts`、`auth.setup.ts`、`playwright.config.ts`、specs、`env-reset.cjs`)。升级后重启 AI 会话即可。
 
 ## 登录(Playwright 官方模式 + 验证码编排)
 
