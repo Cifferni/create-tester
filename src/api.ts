@@ -6,19 +6,36 @@ import { type Page } from '@playwright/test';
 import type { CapturedApi } from './types';
 
 const SKIP_URL = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|map)(\?|$)/i;
+const SKIP_PROTO = /^(data:|blob:)/i;
+
+export interface ApiRecorderOptions {
+  /** 只记录包含这些关键字的 URL(长流程省内存、只抓要断言的接口) */
+  include?: string[];
+  /** 最多缓存条数,防内存暴涨,缺省 300 */
+  maxEntries?: number;
+}
 
 // 开启自动抓包:在 page 上挂监听,返回本次捕获的接口列表
-export function apiRecorder(page: Page): CapturedApi[] {
+// 建议:页面动作很多时传 { include: ['/api/login'] },只抓要断言的接口,避免内存暴涨
+export function apiRecorder(page: Page, opts: ApiRecorderOptions = {}): CapturedApi[] {
   const logs: CapturedApi[] = [];
   const startedAt = new Map<CapturedApi, number>();
+  const maxEntries = opts.maxEntries ?? 300;
+  const matches = (url: string): boolean => {
+    if (SKIP_URL.test(url) || SKIP_PROTO.test(url)) return false;
+    if (!opts.include?.length) return true;
+    return opts.include.some((k) => url.includes(k));
+  };
   page.on('request', (req) => {
-    if (SKIP_URL.test(req.url())) return;
+    if (!matches(req.url())) return;
+    // 超出上限:不再记录新请求(防内存暴涨)
+    if (logs.length >= maxEntries) return;
     const log: CapturedApi = { method: req.method(), url: req.url(), reqBody: req.postData() ?? '' };
     startedAt.set(log, Date.now());
     logs.push(log);
   });
   page.on('response', async (res) => {
-    if (SKIP_URL.test(res.url())) return;
+    if (!matches(res.url())) return;
     if (/image|font|audio|video/.test(res.headers()['content-type'] || '')) return;
     for (let i = logs.length - 1; i >= 0; i--) {
       const log = logs[i];

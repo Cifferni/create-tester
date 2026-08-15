@@ -382,8 +382,10 @@ import { apiRecorder, expectApi } from '${rel}';
 
 // 用例来源: ${caseRef}
 ${guide}
-// 填写规则:每个用例必须有"业务结果断言"(验结果,不是走过场),禁止只点不验。
-// 需要登录时:import { ensureLoggedIn } from '../../_login'; 用例开头 await ensureLoggedIn(page);
+// 填写规则:
+// 1. 每个用例必须有"业务结果断言",禁止只点不验。
+// 2. 断言依据 = 用例文档的"预期"列,不是页面现状;页面与预期不符时报告,不要改断言迁就页面。
+// 3. 需要登录时:import { ensureLoggedIn } from '../../_login'; 用例开头 await ensureLoggedIn(page);
 
 test('${firstMeaningfulLine(text) || base}', async ({ page }) => {
   const api = apiRecorder(page);
