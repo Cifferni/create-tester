@@ -79,6 +79,7 @@ async function main(opts: Options): Promise<void> {
   writePackageJson(target, name, browser, extras);
   setBrowser(target, browser);
   writeMcpJson(target);
+  writeEngineManifest(target);
 
   console.log(`[create-tester] 已创建测试项目:${target}`);
   console.log(`[create-tester] 主浏览器:${browser}${browser === 'chrome' ? '(系统 Chrome,免下载)' : ''}`);
@@ -131,6 +132,17 @@ function writeMcpJson(target: string): void {
     }
   };
   fs.writeFileSync(path.join(target, '.mcp.json'), JSON.stringify(mcp, null, 2) + '\n', 'utf8');
+}
+
+// 引擎文件清单:upgrade 按它先删旧引擎文件再装新的,避免模板重构后残留/冲突
+const ENGINE_FILES = ['mcp/server.cjs', 'mcp/api.cjs', 'mcp/api.d.cts'];
+
+function writeEngineManifest(target: string): void {
+  fs.writeFileSync(
+    path.join(target, '.engine-manifest.json'),
+    JSON.stringify({ engine: ENGINE_FILES }, null, 2) + '\n',
+    'utf8'
+  );
 }
 
 function copyTemplate(templateDir: string, target: string): void {
@@ -201,18 +213,35 @@ function readAllStdin(): Promise<string> {
 // 用最新版脚手架覆盖引擎文件(mcp/server.cjs、api.cjs),不碰用户可能改过的文件。
 program
   .command('upgrade')
-  .description('升级当前测试工程到最新引擎(更新 mcp/server.cjs、api.cjs;不覆盖你改过的文件)')
+  .description('升级当前测试工程到最新引擎(按 .engine-manifest.json 先清旧引擎文件再装新的;不覆盖你改过的文件)')
   .action(() => {
     const root = process.cwd();
     const srcMcp = path.join(__dirname, '..', 'template', 'mcp');
-    // 引擎文件:总是覆盖
-    for (const f of ['server.cjs', 'api.cjs', 'api.d.cts']) {
-      const s = path.join(srcMcp, f);
-      const d = path.join(root, 'mcp', f);
+    const manifestFile = path.join(root, '.engine-manifest.json');
+    // 1) 按 manifest 清掉旧引擎文件(模板重命名/移除的文件不会残留)
+    const oldEngine: string[] = [];
+    try {
+      const m = JSON.parse(fs.readFileSync(manifestFile, 'utf8')) as { engine?: string[] };
+      oldEngine.push(...(m.engine || []));
+    } catch {
+      // 无 manifest(老工程):回退到已知清单
+      oldEngine.push(...ENGINE_FILES);
+    }
+    for (const f of oldEngine) {
+      const p = path.join(root, f);
+      if (fs.existsSync(p)) {
+        fs.rmSync(p, { force: true });
+        console.log(`[upgrade] 已清理旧引擎文件 ${f}`);
+      }
+    }
+    // 2) 装最新引擎
+    for (const f of ENGINE_FILES) {
+      const s = path.join(srcMcp, path.basename(f));
+      const d = path.join(root, f);
       if (fs.existsSync(s)) {
         fs.mkdirSync(path.dirname(d), { recursive: true });
         fs.copyFileSync(s, d);
-        console.log(`[upgrade] 已更新 mcp/${f}`);
+        console.log(`[upgrade] 已安装引擎 ${f}`);
       }
     }
     // env-reset.cjs:不存在才补(用户可能自定义过)
@@ -222,7 +251,9 @@ program
       fs.copyFileSync(path.join(srcMcp, 'env-reset.cjs'), erD);
       console.log('[upgrade] 已新增 mcp/env-reset.cjs');
     }
-    console.log('[upgrade] 完成。未覆盖你改过的文件(_login.ts/auth.setup.ts/playwright.config.ts/specs)。');
+    // 3) 更新 manifest
+    writeEngineManifest(root);
+    console.log('[upgrade] 完成。未覆盖你改过的文件(_login.ts/auth.setup.ts/playwright.config.ts/specs/env-reset.cjs)。');
   });
 
 program

@@ -74,7 +74,7 @@ tester install-browsers       # 安装 Playwright 浏览器(postinstall 自动�
   ```bash
   npx create-tester@latest upgrade
   ```
-  会用最新引擎更新 `mcp/server.cjs`、`mcp/api.cjs`;**不覆盖你改过的文件**(`_login.ts`、`auth.setup.ts`、`playwright.config.ts`、specs、`env-reset.cjs`)。升级后重启 AI 会话即可。
+  按 `.engine-manifest.json` **先清旧引擎文件再装新的**(模板重命名/移除的文件不会残留),更新 `mcp/server.cjs`、`mcp/api.cjs`;**不覆盖你改过的文件**(`_login.ts`、`auth.setup.ts`、`playwright.config.ts`、specs、`env-reset.cjs`)。升级后重启 AI 会话即可。
 
 ## 登录(Playwright 官方模式 + 验证码编排)
 
