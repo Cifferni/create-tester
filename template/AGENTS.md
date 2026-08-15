@@ -12,7 +12,7 @@
 
 | 工具 | 作用 |
 | --- | --- |
-| `list_cases` | 列出 `cases/` 下的用例文件 |
+| `list_cases` | 列出 `test-cases/` 下的用例文件 |
 | `convert_case` | 用例文件(xlsx/xmind/csv/md/txt)→ 结构化文本 |
 | `snapshot` | 打开被测页面,返回可交互结构(定位元素用,替代一切手写选择器) |
 | `list_specs` | 列出 `tests/` 下的 spec |

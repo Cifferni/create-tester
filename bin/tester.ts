@@ -1,5 +1,5 @@
 // CLI 入口:tester = Playwright 之上的规范 + MCP 工具服务器
-//   init        初始化目录规范(playwright.config + cases + tests)
+//   init        初始化目录规范(playwright.config + test-cases + tests)
 //   run         透传 playwright test
 //   mcp         启动 MCP stdio server,暴露用例解析/页面快照/跑测试等工具给 AI harness
 //   install-browsers  安装 Playwright 浏览器(postinstall 用)
@@ -19,7 +19,7 @@ program
 
 program
   .command('init')
-  .description('初始化目录规范(playwright.config.ts / cases / tests)')
+  .description('初始化目录规范(playwright.config.ts / test-cases / tests)')
   .action(() => {
     initProject();
   });
@@ -42,7 +42,7 @@ program
   .action((dir?: string) => {
     const root = path.resolve(dir || process.cwd());
     const rootUrl = root.replace(/\\/g, '/');
-    // 工具按 projectRoot 读 cases/、tests/、result/,不依赖 harness 的 cwd
+    // 工具按 projectRoot 读 test-cases/、tests/、result/,不依赖 harness 的 cwd
     process.env.TESTER_PROJECT_ROOT = root;
     // 全部打印到 stderr:stdout 是 MCP 协议通道,不能污染
     console.error(`[tester] 工程根目录:${root}`);

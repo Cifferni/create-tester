@@ -2,7 +2,7 @@
 
 **tester 一体化包**:脚手架(`npm create tester`)+ 引擎(`tester` CLI / 接口断言 API / MCP 工具服务器)。
 
-面向测试工程师的 **AI 驱动页面测试**。测试人员不写代码、不碰元素选择器:把既有用例丢进 `cases/`,AI harness(Codex / opencode / Claude 等)通过 MCP 读取用例、看页面、写 spec、跑测试、判失败。执行、报告、重试、trace 全部交给 Playwright。
+面向测试工程师的 **AI 驱动页面测试**。测试人员不写代码、不碰元素选择器:把既有用例丢进 `test-cases/`,AI harness(Codex / opencode / Claude 等)通过 MCP 读取用例、看页面、写 spec、跑测试、判失败。执行、报告、重试、trace 全部交给 Playwright。
 
 ## 用法
 
@@ -53,7 +53,7 @@ test('登录成功', async ({ page }) => {
 
 | 工具 | 说明 |
 | --- | --- |
-| `list_cases` | 列出 `cases/` 下的用例文件 |
+| `list_cases` | 列出 `test-cases/` 下的用例文件 |
 | `convert_case` | 用例文件(xlsx/xmind/csv/md/txt)→ 结构化文本 |
 | `snapshot` | 打开被测页面,返回可交互结构快照(供定位元素) |
 | `list_specs` | 列出 `tests/` 下已生成的 spec |
@@ -64,7 +64,7 @@ test('登录成功', async ({ page }) => {
 
 ```
 my-test/
-├── cases/            用例(支持 xlsx/xmind/md/csv/txt)
+├── test-cases/       用例(支持 xlsx/xmind/md/csv/txt)
 ├── tests/<功能>/*.spec.ts  可执行用例(AI 生成 或 codegen 录制)
 ├── playwright.config.ts  被测地址 + 浏览器 + 报告配置
 ├── mcp/server.cjs    工程内 MCP server(引擎内联,可改)

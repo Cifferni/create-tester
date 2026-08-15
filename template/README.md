@@ -4,7 +4,7 @@
 
 ## 工作方式
 
-1. **测试人员**:把已有用例(Excel / XMind / Markdown / CSV / TXT)丢进 `cases/`,不需要写任何代码
+1. **测试人员**:把已有用例(Excel / XMind / Markdown / CSV / TXT)丢进 `test-cases/`,不需要写任何代码
 2. **AI harness**:通过 MCP 调用 tester 的工具——
    - `list_cases` / `convert_case` 读懂用例
    - `snapshot` 打开页面看结构,定位元素
@@ -27,9 +27,9 @@ MCP server 就是本工程 `mcp/server.cjs`,在 AI harness(Codex / opencode / Cl
 }
 ```
 
-> `args` 里的路径换成你的工程根目录;`cwd` 指向工程根目录(工具按它读 `cases/`、`tests/`、`result/`)。也可以在工程根目录直接跑 `node mcp/server.cjs` 手动验证。
+> `args` 里的路径换成你的工程根目录;`cwd` 指向工程根目录(工具按它读 `test-cases/`、`tests/`、`result/`)。也可以在工程根目录直接跑 `node mcp/server.cjs` 手动验证。
 
-配好后,直接对 AI 说:"把 cases/登录.xlsx 转成测试用例跑一遍,失败的给我分析根因。"
+配好后,直接对 AI 说:"把 test-cases/登录.xlsx 转成测试用例跑一遍,失败的给我分析根因。"
 
 ## 命令行
 
@@ -42,7 +42,7 @@ node mcp/server.cjs  # 同上,手动启动(想改工具行为就改 mcp/server.c
 ## 结构
 
 ```
-cases/              测试人员的既有用例(输入源,MCP convert_case 读取)
+test-cases/         测试人员的既有用例(输入源,MCP convert_case 读取)
 tests/<功能>/*.spec.ts  可执行用例,按功能模块组织(AI 生成 或 playwright codegen 录制)
 playwright.config.ts  Playwright 配置(被测地址/浏览器,一般用环境变量)
 mcp/server.cjs       工程内 MCP server 代码(引擎已内联,可改;node mcp/server.cjs 启动)

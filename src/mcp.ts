@@ -1,7 +1,7 @@
 // MCP 服务器:tester 作为工具服务器暴露给 AI harness(Codex / opencode / Claude 等)
 // 定位:不内置 AI,只暴露测试工程原语,AI 决策交给 harness。
-//   convert_case   cases/ 用例文件(xlsx/xmind/md/csv/txt)→ 结构化文本
-//   list_cases     列出 cases/ 下的用例文件
+//   convert_case   test-cases/ 用例文件(xlsx/xmind/md/csv/txt)→ 结构化文本
+//   list_cases     列出 test-cases/ 下的用例文件
 //   snapshot       打开被测页面,返回可交互结构快照(供 harness 定位元素)
 //   list_specs     列出 tests/ 下已生成的 spec
 //   run_tests      跑 Playwright 测试,返回 JSON 结果
@@ -48,18 +48,18 @@ function runMCP(): void {
 
   server.tool(
     'list_cases',
-    '列出 cases/ 目录下的测试用例文件',
+    '列出 test-cases/ 目录下的测试用例文件',
     {},
     () => {
-      const files = listFiles(path.join(projectRoot(), 'cases'), /\.(xlsx|xls|xmind|csv|md|markdown|txt)$/i);
-      return textResult(files.length ? files.join('\n') : '(cases/ 下没有用例文件)');
+      const files = listFiles(path.join(projectRoot(), 'test-cases'), /\.(xlsx|xls|xmind|csv|md|markdown|txt)$/i);
+      return textResult(files.length ? files.join('\n') : '(test-cases/ 下没有用例文件)');
     }
   );
 
   server.tool(
     'convert_case',
-    '把 cases/ 下的用例文件(xlsx/xmind/csv/md/txt)转成结构化文本,供理解测试目标',
-    { file: z.string().describe('cases/ 下的文件路径,如 cases/登录.xlsx') },
+    '把 test-cases/ 下的用例文件(xlsx/xmind/csv/md/txt)转成结构化文本,供理解测试目标',
+    { file: z.string().describe('test-cases/ 下的文件路径,如 test-cases/登录.xlsx') },
     ({ file }) => {
       const abs = cwdResolve(file);
       if (!fs.existsSync(abs)) return textResult(`文件不存在:${file}`);
