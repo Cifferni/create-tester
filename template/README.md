@@ -1,59 +1,51 @@
-# 测试项目
+# 测试项目使用说明
 
-**AI 驱动页面测试项目**(由 [create-tester](https://www.npmjs.com/package/create-tester) 脚手架创建)。引擎代码就放在本工程的 `mcp/` 里,**完全自包含,不依赖 create-tester 包**。tester 不内置 AI,而是以 **MCP 工具服务器** 形式存在:AI harness(Codex / opencode / Claude 等)通过 MCP 读取用例、看页面、写 spec、跑测试、判失败。测试人员只管说人话、放用例。
+这个项目帮你的页面做自动化测试。**你不需要写代码、不需要碰文件、不需要懂任何技术**——只要会用聊天框。
 
-## 工作方式
+## 一、你只需要做三件事
 
-1. **测试人员**:把已有用例(Excel / XMind / Markdown / CSV / TXT)丢进 `test-cases/`,不需要写任何代码
-2. **AI harness**:通过 MCP 调用 tester 的工具——
-   - `list_cases` / `convert_case` 读懂用例
-   - `snapshot` 打开页面看结构,定位元素
-   - 在 `tests/<功能>/` 下写 `*.spec.ts`
-   - `run_tests` 执行,`failures` 拿失败详情判断根因
+### 1. 放用例
+把已有的测试用例丢进 `test-cases/` 文件夹。支持:
 
-## MCP 配置
+- **Excel**(.xlsx / .xls)— 大批量用例管理
+- **XMind**(.xmind)— 梳理测试点/场景
+- **Markdown / CSV / TXT** — 文档、禅道/Jira 导出、自然语言步骤
 
-MCP server 就是本工程 `mcp/server.cjs`,在 AI harness(Codex / opencode / Claude Code 等)的 MCP 配置里加一个 stdio server:
+**不用改任何格式**,原样放进去就行。
 
-```json
-{
-  "mcpServers": {
-    "tester": {
-      "command": "node",
-      "args": ["D:/my-test/mcp/server.cjs"],
-      "cwd": "D:/my-test"
-    }
-  }
-}
-```
+### 2. 对 AI 说需求
+在 AI 对话里说一句人话,例如:
 
-> `args` 里的路径换成你的工程根目录;`cwd` 指向工程根目录(工具按它读 `test-cases/`、`tests/`、`result/`)。也可以在工程根目录直接跑 `node mcp/server.cjs` 手动验证。
+> "把 test-cases/登录.xlsx 转成测试用例跑一遍,失败的给我分析根因"
+> "给订单功能写几个测试,断言接口 /api/order 返回 code=0"
 
-配好后,直接对 AI 说:"把 test-cases/登录.xlsx 转成测试用例跑一遍,失败的给我分析根因。"
+AI 会自动:读用例 → 打开页面看结构 → 生成测试 → 跑测试 → 告诉你哪些过、哪些挂、为什么挂。
 
-## 命令行
+### 3. 需要登录就报一下账号
+如果被测页面要登录,在对话里顺带说一句:
 
-```bash
-npm run test         # 跑回归(playwright test,支持并行/重试/trace)
-npm run mcp          # 启动工程内 MCP server(供 AI harness 连接)
-node mcp/server.cjs  # 同上,手动启动(想改工具行为就改 mcp/server.cjs)
-```
+> "登录账号是 test01,密码是 123456"
 
-## 结构
+**不需要你建 .env、改配置文件**,AI 会记住并自动登录。
 
-```
-test-cases/         测试人员的既有用例(输入源,MCP convert_case 读取)
-tests/<功能>/*.spec.ts  可执行用例,按功能模块组织(AI 生成 或 playwright codegen 录制)
-playwright.config.ts  Playwright 配置(被测地址/浏览器,一般用环境变量)
-mcp/server.cjs       工程内 MCP server 代码(引擎已内联,可改;node mcp/server.cjs 启动)
-mcp/api.cjs          接口断言 API(spec 里 import { apiRecorder } from '../mcp/api.cjs')
-AGENTS.md            给 AI 的工作规范(必用 MCP 工具、禁止写裸脚本)
-result/             所有输出:report/(HTML 报告)、test-results.json、output/(截图/trace)
-```
+## 二、怎么看结果
 
-## 配置(环境变量)
+- **失败原因**:AI 会直接告诉你"哪个用例挂了、为什么",不用自己看日志。
+- **HTML 报告**:打开 `result/report/index.html`,有截图和操作记录,可直接当 bug 证据发给开发。
+- **回归**:以后随时让 AI 再跑一遍,或命令 `npm run test`。
 
-| 环境变量 | 说明 |
+## 三、常见问题
+
+| 现象 | 怎么办 |
 | --- | --- |
-| `BASE_URL` | 被测页面地址(默认 `http://localhost:3000`) |
-| `TESTER_BROWSER` | 浏览器:chromium / chrome / firefox / webkit |
+| 页面打不开 | 告诉 AI 被测地址(或让开发确认服务已启动、已连内网/VPN) |
+| AI 说定位不到元素 | 让 AI 用"探查页面"重新看结构,别让它瞎猜 |
+| 用例挂了但不知道是不是 bug | 让 AI 分析根因:是环境问题(比如刷新不保持、没登录)还是真 bug |
+| 想重跑失败的用例 | 直接说"把上次失败的重新跑一遍" |
+| 被测地址变了 | 对话里告诉 AI 新地址即可 |
+
+## 给维护者(接入 AI 的人)
+
+- AI 通过本工程的 MCP server(`mcp/server.cjs`)工作:在 AI 工具里配置一个 stdio server,`command` 用 `node`,`args` 指向 `D:/my-test/mcp/server.cjs`,`cwd` 指向工程根目录。
+- 工程完全自包含,不依赖外部包;AI 工作规范见 `AGENTS.md`。
+- 被测地址/浏览器可用环境变量 `BASE_URL`、`TESTER_BROWSER` 配置。
