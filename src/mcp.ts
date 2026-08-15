@@ -10,6 +10,7 @@
 
 import fs from 'fs';
 import path from 'path';
+import { spawn } from 'child_process';
 import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
@@ -160,6 +161,41 @@ function runMCP(): void {
       } finally {
         await page.close();
       }
+    }
+  );
+
+  server.tool(
+    'login',
+    '后台打开带界面浏览器做人工登录(验证码/短信场景):返回后请在浏览器里完成登录并关掉,再用 login_status 确认。无验证码时 auth.setup 会自动登录,一般不需要这个',
+    {},
+    () => {
+      const root = projectRoot();
+      const authFile = path.join(root, 'result', 'auth.json');
+      if (fs.existsSync(authFile)) return textResult(`已有登录态:${authFile},无需重新登录`);
+      const { baseURL } = playwrightConfig();
+      fs.mkdirSync(path.join(root, 'result'), { recursive: true });
+      // detached + windowsHide:不阻塞 MCP 请求、不弹终端窗口;浏览器窗口会正常打开
+      const child = spawn(
+        'npx',
+        ['playwright', 'codegen', baseURL, '--save-storage=result/auth.json'],
+        { cwd: root, detached: true, stdio: 'ignore', windowsHide: true, shell: true }
+      );
+      child.unref();
+      return textResult(`已在后台打开浏览器:${baseURL}\n请测试人员在浏览器里完成登录(输验证码/短信),然后关掉浏览器。\n之后用 login_status 确认登录态已保存。`);
+    }
+  );
+
+  server.tool(
+    'login_status',
+    '检查人工登录是否完成(result/auth.json 是否已生成)',
+    {},
+    () => {
+      const f = path.join(projectRoot(), 'result', 'auth.json');
+      if (!fs.existsSync(f)) {
+        return textResult('未完成:result/auth.json 还没生成(等测试人员在浏览器里完成登录并关掉浏览器)');
+      }
+      const mtime = fs.statSync(f).mtime.toISOString();
+      return textResult(`已完成:result/auth.json(保存于 ${mtime}),登录态可复用,直接重跑测试`);
     }
   );
 
