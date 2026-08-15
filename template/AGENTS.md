@@ -32,6 +32,13 @@
 5. `status` / `failures` 轮询拿结果
 6. 分析根因,改 spec 后用 `retry_failed` 只重跑失败的
 
+## 业务断言(测出 bug 的关键,务必遵守)
+
+- **每个用例必须有业务结果断言,禁止"只点不验"。** 点完按钮 → 断言接口 `expectApi`(code/字段/状态码)或页面结果(`toHaveURL`/`toHaveText`/`toHaveClass`/`toBeVisible` 等)。
+- **接口断言最硬**:页面操作触发的接口用 `expectApi(api, '/api/xxx').code('0')` / `.field('data.token').notEmpty()` / `.status(200)`。
+- **改数据类用例**:造数据 + 用后清理;判断新增/删除用计数对比(namesBefore/namesAfter),不要靠名字唯一。
+- 断言找不到接口会等最多 15 秒;状态码 ≥400 默认直接失败。
+
 ## 性能与纪律(务必遵守,否则一次任务跑 30 分钟)
 
 - **探查一律用 `snapshot` / `inspect`,禁止写临时 spec / probe 脚本。** 一次调用尽量覆盖多个问题(传多个选择器、`inspect` 批量)。

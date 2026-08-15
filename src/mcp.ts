@@ -305,18 +305,33 @@ import { apiRecorder, expectApi } from '${rel}';
 
 // 用例来源: ${caseRef}
 ${guide}
+// 填写规则:每个用例必须有"业务结果断言"(验结果,不是走过场),禁止只点不验。
 
 test('${firstMeaningfulLine(text) || base}', async ({ page }) => {
   const api = apiRecorder(page);
 ${goto}
-  // TODO: 用 snapshot 工具看页面结构,补元素定位与操作
+
+  // ── 操作:用 snapshot 看结构后补定位器(优先 data-testid → getByRole → class) ──
   // 例: await page.getByTestId('username').fill('test01');
   //     await page.getByTestId('login-submit').click();
-  //     await expectApi(api, '/api/login').code('0');
+  //     await page.getByRole('button', { name: '保存' }).click();
+
+  // ── 业务断言(至少满足一条,严禁只点不验) ──
+  // 接口层(推荐,最硬):操作触发的接口断言业务码/字段/状态码
+  // 例: await expectApi(api, '/api/login').code('0');
+  //     await expectApi(api, '/api/login').field('data.token').notEmpty();
+  //     await expectApi(api, '/api/login').status(200);
+  // 页面层:结果必须可观察(跳转/文案/元素状态/值)
+  // 例: await expect(page).toHaveURL(/\/home/);
+  //     await expect(page.getByText('保存成功')).toBeVisible();
+  //     await expect(page.getByTestId('switch')).toHaveClass(/on/);
+
+  // ── 环境数据(改数据类用例) ──
+  // 造数据 + 用后清理;判断新增/删除用计数对比(namesBefore/namesAfter),不要靠名字唯一。
 });
 `;
       fs.writeFileSync(targetFile, skeleton, 'utf8');
-      return textResult(`已生成:${targetFile}\n用 snapshot 看页面结构补选择器,然后 run_tests 或 retry_failed`);
+      return textResult(`已生成:${targetFile}\n用 snapshot 看页面结构补选择器、补业务断言,然后 run_tests 或 retry_failed`);
     }
   );
 
