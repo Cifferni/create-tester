@@ -20,7 +20,8 @@ function playwrightTestCli(cwd?: string): string | null {
 
 function spawnCapture(args: string[], cwd: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
-    const child = spawn(process.execPath, args, { cwd });
+    // windowsHide:避免 Windows 每次跑测试弹控制台窗口
+    const child = spawn(process.execPath, args, { cwd, windowsHide: true });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (d) => (stdout += d));
@@ -195,7 +196,8 @@ export async function runPlaywrightTestPassthrough(files: string[], cwd: string)
   if (!cli) throw new Error('未找到 @playwright/test,请先 npm install');
   const args = [cli, 'test', ...files];
   return await new Promise((resolve) => {
-    const child = spawn(process.execPath, args, { cwd, stdio: 'inherit' });
+    // windowsHide:避免 Windows 跑测试弹控制台窗口
+    const child = spawn(process.execPath, args, { cwd, stdio: 'inherit', windowsHide: true });
     child.on('close', (code) => resolve(code ?? 1));
   });
 }

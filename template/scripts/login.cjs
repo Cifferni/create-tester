@@ -13,7 +13,7 @@ console.log('登录成功后**关掉浏览器**,登录态会自动保存,之后�
 const child = spawn(
   'npx',
   ['playwright', 'codegen', baseURL, '--save-storage=result/auth.json'],
-  { stdio: 'inherit', shell: true }
+  { stdio: 'inherit', shell: true, windowsHide: true }
 );
 child.on('close', (code) => {
   console.log('登录态已保存到 result/auth.json。');

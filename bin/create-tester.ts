@@ -86,7 +86,7 @@ async function main(opts: Options): Promise<void> {
 
   if (opts.install !== false) {
     console.log('[create-tester] 正在 npm install(首次会下载依赖与浏览器,请稍候)…');
-    const child = spawn('npm', ['install'], { cwd: target, stdio: 'inherit', shell: true });
+    const child = spawn('npm', ['install'], { cwd: target, stdio: 'inherit', shell: true, windowsHide: true });
     await new Promise((resolve) => child.on('close', resolve));
   }
   printProjectInfo(target, name, browser, extras, opts.install !== false);

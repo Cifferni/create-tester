@@ -67,7 +67,7 @@ function defaultSpecFiles(): string[] {
 }
 
 async function runPlaywrightInstall(names: string[]): Promise<void> {
-  const child = spawn('npx', ['playwright', 'install', ...names], { stdio: 'inherit', shell: true });
+  const child = spawn('npx', ['playwright', 'install', ...names], { stdio: 'inherit', shell: true, windowsHide: true });
   await new Promise((resolve) => child.on('close', resolve));
 }
 
