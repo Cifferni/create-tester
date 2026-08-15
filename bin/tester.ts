@@ -46,14 +46,14 @@ program
     process.env.TESTER_PROJECT_ROOT = root;
     // 全部打印到 stderr:stdout 是 MCP 协议通道,不能污染
     console.error(`[tester] 工程根目录:${root}`);
-    console.error('[tester] 通用格式(Claude Code / Cursor / VS Code / opencode 等,存成 .mcp.json 放工程根目录):');
+    console.error('[tester] 通用格式(Claude Code / Cursor / VS Code / opencode 等,存成 .mcp.json 放工程根目录,指向工程内 mcp/server.cjs):');
     console.error(JSON.stringify(
-      { mcpServers: { tester: { command: 'npx', args: ['tester', 'mcp', rootUrl] } } },
+      { mcpServers: { tester: { command: 'node', args: [`${rootUrl}/mcp/server.cjs`], cwd: rootUrl } } },
       null,
       2
     ));
     console.error('[tester] Codex 格式(追加到 ~/.codex/config.toml):');
-    console.error(`[mcp_servers.tester]\ncommand = "npx"\nargs = ["tester", "mcp", "${rootUrl}"]`);
+    console.error(`[mcp_servers.tester]\ncommand = "node"\nargs = ["${rootUrl}/mcp/server.cjs"]`);
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require('../src/mcp');
   });

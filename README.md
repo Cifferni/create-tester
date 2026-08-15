@@ -19,7 +19,7 @@ cd my-test && npm install     # 自动装引擎(本包)+ 自动下载浏览器
 npm run test                  # 跑回归(playwright test)
 ```
 
-在测试工程根目录跑 `tester mcp`,会自动打印两种可粘贴的 MCP 配置(通用 `.mcp.json` + Codex `config.toml`)。工程自带 `AGENTS.md`(AI 工作规范:必用 MCP 工具、禁止写裸脚本)。
+生成的工程**完全自包含**:MCP server 与引擎代码在工程 `mcp/` 里,不依赖 create-tester 包。在 AI harness 里配置 stdio server(命令:`node D:/my-test/mcp/server.cjs`,cwd 指向工程),工程自带 `AGENTS.md`(AI 工作规范:必用 MCP 工具、禁止写裸脚本)。
 
 ## 命令行
 
@@ -33,10 +33,10 @@ tester install-browsers       # 安装 Playwright 浏览器(postinstall 自动�
 
 ## 接口自动断言(核心差异化)
 
-spec 直接 import,页面操作触发的接口自动捕获,按 URL 关键字断言,不用手写 `waitForResponse`:
+spec 直接 import 工程内的 `mcp/api.cjs`,页面操作触发的接口自动捕获,按 URL 关键字断言,不用手写 `waitForResponse`:
 
 ```ts
-import { apiRecorder, expectApi } from 'create-tester';
+import { apiRecorder, expectApi } from '../mcp/api.cjs';
 
 test('登录成功', async ({ page }) => {
   const api = apiRecorder(page);
@@ -67,7 +67,8 @@ my-test/
 ├── cases/            用例(支持 xlsx/xmind/md/csv/txt)
 ├── tests/<功能>/*.spec.ts  可执行用例(AI 生成 或 codegen 录制)
 ├── playwright.config.ts  被测地址 + 浏览器 + 报告配置
-├── mcp/server.cjs    工程内自带的 MCP server 代码(可改)
+├── mcp/server.cjs    工程内 MCP server(引擎内联,可改)
+├── mcp/api.cjs       接口断言 API(spec import '../mcp/api.cjs')
 ├── AGENTS.md          给 AI 的工作规范(必用 MCP 工具)
 └── result/           所有输出:report/(HTML 报告)、test-results.json、output/(截图/trace)
 ```

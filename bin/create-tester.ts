@@ -7,8 +7,6 @@ import { spawn } from 'child_process';
 import { program } from 'commander';
 import prompts from 'prompts';
 
-const ENGINE_NAME = 'create-tester';
-const ENGINE_VERSION = '^0.4.0';
 const PLAYWRIGHT_TEST_VERSION = '^1.49.1';
 
 const BROWSER_CHOICES = [
@@ -84,22 +82,22 @@ async function main(opts: Options): Promise<void> {
   console.log(`[create-tester] 已创建测试项目:${target}`);
   console.log(`[create-tester] 主浏览器:${browser}${browser === 'chrome' ? '(系统 Chrome,免下载)' : ''}`);
   if (extras.length) console.log(`[create-tester] 额外浏览器:${extras.join(', ')}`);
-  console.log(`[create-tester] 引擎 ${ENGINE_NAME} 会随 npm install 自动安装,浏览器自动下载`);
+  console.log('[create-tester] 引擎代码在 mcp/,依赖与浏览器随 npm install 自动安装');
 
   if (opts.install !== false) {
-    console.log('[create-tester] 正在 npm install(首次会下载引擎与浏览器,请稍候)…');
+    console.log('[create-tester] 正在 npm install(首次会下载依赖与浏览器,请稍候)…');
     const child = spawn('npm', ['install'], { cwd: target, stdio: 'inherit', shell: true });
     await new Promise((resolve) => child.on('close', resolve));
     console.log('[create-tester] 安装完成,可以直接用了:');
     console.log('  cd ' + target);
-    console.log('  npm run test  # 跑回归(playwright test)');
-    console.log('  node mcp/mcp-client.cjs <工具> <参数>  # 调 MCP 工具(见 AGENTS.md)');
+    console.log('  npm run test        # 跑回归(playwright test)');
+    console.log('  node mcp/server.cjs # 启动工程内 MCP server(见 AGENTS.md)');
   } else {
     console.log('  接下来:');
     console.log('  cd ' + target);
     console.log('  npm install');
-    console.log('  npm run test  # 跑回归(playwright test)');
-    console.log('  node mcp/mcp-client.cjs <工具> <参数>  # 调 MCP 工具(见 AGENTS.md)');
+    console.log('  npm run test        # 跑回归(playwright test)');
+    console.log('  node mcp/server.cjs # 启动工程内 MCP server(见 AGENTS.md)');
   }
 }
 
@@ -120,11 +118,10 @@ function writePackageJson(target: string, name: string, browser: string, extras:
   const scripts: Record<string, string> = {
     test: 'playwright test',
     'test:headed': 'playwright test --headed',
-    run: 'tester run',
-    mcp: 'tester mcp'
+    mcp: 'node mcp/server.cjs'
   };
   if (browsers.length) {
-    scripts.postinstall = `tester install-browsers ${browsers.join(' ')}`;
+    scripts.postinstall = `npx playwright install ${browsers.join(' ')}`;
   }
   const pkg = {
     name: pkgName,
@@ -132,8 +129,12 @@ function writePackageJson(target: string, name: string, browser: string, extras:
     private: true,
     scripts,
     devDependencies: {
-      [ENGINE_NAME]: ENGINE_VERSION,
-      '@playwright/test': PLAYWRIGHT_TEST_VERSION
+      '@modelcontextprotocol/sdk': '^1.30.0',
+      '@playwright/test': PLAYWRIGHT_TEST_VERSION,
+      playwright: '^1.49.1',
+      jiti: '^2.7.0',
+      zod: '^3.25 || ^4.0',
+      xlsx: 'https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz'
     }
   };
   fs.writeFileSync(path.join(target, 'package.json'), JSON.stringify(pkg, null, 2) + '\n', 'utf8');
