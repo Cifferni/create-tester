@@ -41,19 +41,9 @@ program
   .argument('[dir]', '测试工程根目录(缺省自动取当前目录)')
   .action((dir?: string) => {
     const root = path.resolve(dir || process.cwd());
-    const rootUrl = root.replace(/\\/g, '/');
     // 工具按 projectRoot 读 test-cases/、tests/、result/,不依赖 harness 的 cwd
     process.env.TESTER_PROJECT_ROOT = root;
-    // 全部打印到 stderr:stdout 是 MCP 协议通道,不能污染
-    console.error(`[tester] 工程根目录:${root}`);
-    console.error('[tester] 通用格式(Claude Code / Cursor / VS Code / opencode 等,存成 .mcp.json 放工程根目录,指向工程内 mcp/server.cjs):');
-    console.error(JSON.stringify(
-      { mcpServers: { tester: { command: 'node', args: [`${rootUrl}/mcp/server.cjs`], cwd: rootUrl } } },
-      null,
-      2
-    ));
-    console.error('[tester] Codex 格式(追加到 ~/.codex/config.toml):');
-    console.error(`[mcp_servers.tester]\ncommand = "node"\nargs = ["${rootUrl}/mcp/server.cjs"]`);
+    // 连接配置由 src/mcp 启动时打印到 stderr(node mcp/server.cjs 与 tester mcp 一致)
     // eslint-disable-next-line @typescript-eslint/no-require-imports
     require('../src/mcp');
   });

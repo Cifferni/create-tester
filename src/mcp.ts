@@ -44,6 +44,16 @@ function textResult(text: string) {
 }
 
 function runMCP(): void {
+  const root = projectRoot();
+  const rootUrl = root.replace(/\\/g, '/');
+  // 打印到 stderr:stdout 是 MCP 协议通道,不能污染
+  console.error(`[tester] 工程根目录:${root}`);
+  console.error('[tester] MCP 连接配置(粘贴到 AI harness,如 .mcp.json):');
+  console.error(JSON.stringify(
+    { mcpServers: { tester: { command: 'node', args: [`${rootUrl}/mcp/server.cjs`], cwd: rootUrl } } },
+    null,
+    2
+  ));
   const server = new McpServer({ name: 'tester', version: '0.5.0' });
 
   server.tool(
