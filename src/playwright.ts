@@ -116,6 +116,63 @@ export function parseJsonReport(raw: string): TestFailure[] {
   return failures;
 }
 
+export interface TestSummary {
+  total: number;
+  passed: number;
+  failed: number;
+  skipped: number;
+  durationMs: number;
+  failures: TestFailure[];
+}
+
+// 报告总览:通过/失败/跳过/耗时 + 失败详情
+export function summarizeJsonReport(raw: string): TestSummary | null {
+  let data: { stats?: Record<string, unknown>; suites?: unknown[] } | null = null;
+  try {
+    data = JSON.parse(raw) as { stats?: Record<string, unknown>; suites?: unknown[] };
+  } catch {
+    return null;
+  }
+  const stats = data.stats || {};
+  const expected = Number(stats.expected) || 0;
+  const unexpected = Number(stats.unexpected) || 0;
+  const skipped = Number(stats.skipped) || 0;
+  return {
+    total: expected + unexpected + skipped,
+    passed: expected,
+    failed: unexpected,
+    skipped,
+    durationMs: Math.round(Number(stats.duration) || 0),
+    failures: parseJsonReport(raw)
+  };
+}
+
+// 报告里失败的 spec 文件(供 retry_failed 只重跑失败项)
+export function failedSpecFiles(raw: string): string[] {
+  const files = new Set<string>();
+  let data: { suites?: unknown[] } | null = null;
+  try {
+    data = JSON.parse(raw) as { suites?: unknown[] };
+  } catch {
+    return [];
+  }
+  const walk = (suites: unknown[]): void => {
+    for (const s of suites as Array<{ suites?: unknown[]; specs?: unknown[] }>) {
+      if (s.suites?.length) walk(s.suites);
+      for (const sp of s.specs || []) {
+        const spec = sp as { file?: string; tests?: JsonTest[] };
+        const failed = (spec.tests || []).some((t) => {
+          const r = t.results?.[t.results.length - 1];
+          return r?.status === 'failed' || t.status === 'failed' || r?.status === 'timedOut';
+        });
+        if (failed && spec.file) files.add(spec.file);
+      }
+    }
+  };
+  if (data.suites?.length) walk(data.suites);
+  return [...files];
+}
+
 // 透传跑测试(不解析,直接继承 IO),返回退出码
 export async function runPlaywrightTestPassthrough(files: string[], cwd: string): Promise<number> {
   const cli = playwrightTestCli(cwd);

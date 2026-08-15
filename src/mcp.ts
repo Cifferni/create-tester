@@ -18,7 +18,7 @@ import { closeBrowser } from './browser';
 import { launchBrowser } from './browser';
 import { playwrightConfig } from './config';
 import { getPageSnapshot } from './pagesnapshot';
-import { startPlaywrightTest, runPlaywrightTest, parseJsonReport } from './playwright';
+import { startPlaywrightTest, runPlaywrightTest, parseJsonReport, summarizeJsonReport, failedSpecFiles } from './playwright';
 import type { BrowserName } from './types';
 
 // 项目根目录:优先用 tester mcp <dir> 传的,缺省 process.cwd()
@@ -42,6 +42,20 @@ function listFiles(dir: string, exts: RegExp): string[] {
 
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] };
+}
+
+// 目录/文件名安全化:去掉 Windows 不允许的字符,防路径穿越
+function sanitizePath(name: string): string {
+  return name.replace(/[\\/:*?"<>|]/g, '').trim();
+}
+
+// 取用例文本里第一个有意义的行(去掉 markdown 标记/表格/URL),做 spec 标题
+function firstMeaningfulLine(text: string): string {
+  for (const raw of text.split(/\r?\n/)) {
+    const line = raw.trim().replace(/^#+\s*/, '').replace(/^\|.*\|$/, '').trim();
+    if (line.length >= 2 && !/^https?:\/\//.test(line)) return line;
+  }
+  return '';
 }
 
 function runMCP(): void {
@@ -150,6 +164,102 @@ function runMCP(): void {
       const failures = parseJsonReport(fs.readFileSync(report, 'utf8'));
       if (!failures.length) return textResult('报告中没有失败用例');
       return textResult(failures.map((f) => `【${f.title}】\n${f.error || '(无错误信息)'}`).join('\n\n'));
+    }
+  );
+
+  server.tool(
+    'status',
+    '读取 result/test-results.json 报告,返回通过/失败/跳过/耗时总览(供 AI 一眼看清整轮结果)',
+    { file: z.string().optional().describe('JSON 报告路径,默认 result/test-results.json') },
+    ({ file }) => {
+      const report = cwdResolve(file || 'result/test-results.json');
+      if (!fs.existsSync(report)) return textResult(`未找到报告:${report}(测试可能仍在运行,稍后再查)`);
+      const s = summarizeJsonReport(fs.readFileSync(report, 'utf8'));
+      if (!s) return textResult('报告解析失败');
+      const lines = [
+        `通过 ${s.passed} / 失败 ${s.failed} / 跳过 ${s.skipped} / 共 ${s.total} / 耗时 ${s.durationMs}ms`,
+        s.failed ? `失败用例:\n${s.failures.map((f) => `- ${f.title}`).join('\n')}` : '(全部通过)'
+      ];
+      return textResult(lines.join('\n'));
+    }
+  );
+
+  server.tool(
+    'retry_failed',
+    '重跑上一次报告中的失败用例(只重跑失败的 spec,不做全量),缺省后台运行,用 failures/status 轮询',
+    {
+      headed: z.boolean().optional().describe('是否带界面执行,默认无头'),
+      wait: z.boolean().optional().describe('true=同步等跑完返回结果;缺省后台运行+轮询')
+    },
+    async ({ headed, wait }) => {
+      const report = path.join(projectRoot(), 'result', 'test-results.json');
+      if (!fs.existsSync(report)) return textResult('未找到上次报告:result/test-results.json(先跑一次 run_tests)');
+      const files = failedSpecFiles(fs.readFileSync(report, 'utf8'));
+      if (!files.length) return textResult('上次报告中没有失败用例,无需重跑');
+      if (wait) {
+        const { failures } = await runPlaywrightTest(files, projectRoot(), { headed });
+        return textResult(JSON.stringify({ status: 'done', reran: files.length, failures }, null, 2));
+      }
+      try {
+        fs.rmSync(path.join(projectRoot(), 'result', 'test-results.json'), { force: true });
+      } catch {}
+      const { pid } = startPlaywrightTest(files, projectRoot(), { headed });
+      return textResult(
+        JSON.stringify(
+          { status: 'running', pid, reran: files.length, note: '只重跑上次失败的 spec,用 failures/status 轮询' },
+          null,
+          2
+        )
+      );
+    }
+  );
+
+  server.tool(
+    'generate_spec',
+    '根据 test-cases/ 下的用例文件生成一个 Playwright spec 骨架(含 apiRecorder/断言模板),写到 tests/<feature>/。AI 再用 snapshot 看页面结构补选择器,然后 run_tests',
+    {
+      case: z.string().describe('test-cases/ 下的用例文件,如 test-cases/登录.xlsx'),
+      feature: z.string().optional().describe('功能模块名,决定 tests/ 下子目录;缺省用用例文件名'),
+      url: z.string().optional().describe('被测页面地址(可选,写进骨架的 goto)')
+    },
+    ({ case: caseFile, feature, url }) => {
+      const abs = cwdResolve(caseFile);
+      if (!fs.existsSync(abs)) return textResult(`文件不存在:${caseFile}`);
+      const text = readCaseFile(abs);
+      const base = path.basename(abs, path.extname(abs));
+      const featureName = sanitizePath((feature || base).trim() || base);
+      const targetDir = path.join(projectRoot(), 'tests', featureName);
+      const targetFile = path.join(targetDir, `${sanitizePath(base) || 'case'}.spec.ts`);
+      fs.mkdirSync(targetDir, { recursive: true });
+      const rel = path.relative(path.dirname(targetFile), path.join(projectRoot(), 'mcp', 'api.cjs')).replace(/\\/g, '/');
+      const caseRef = path.relative(projectRoot(), abs).replace(/\\/g, '/');
+      const guide = text
+        .split(/\r?\n/)
+        .map((l) => l.trim())
+        .filter(Boolean)
+        .slice(0, 12)
+        .map((l) => `// ${l}`)
+        .join('\n');
+      const goto = url
+        ? `  await page.goto('${url}');`
+        : `  // await page.goto('/');  // 用 snapshot 看结构后填路径`;
+      const skeleton = `import { test, expect } from '@playwright/test';
+import { apiRecorder, expectApi } from '${rel}';
+
+// 用例来源: ${caseRef}
+${guide}
+
+test('${firstMeaningfulLine(text) || base}', async ({ page }) => {
+  const api = apiRecorder(page);
+${goto}
+  // TODO: 用 snapshot 工具看页面结构,补元素定位与操作
+  // 例: await page.getByTestId('username').fill('test01');
+  //     await page.getByTestId('login-submit').click();
+  //     await expectApi(api, '/api/login').code('0');
+});
+`;
+      fs.writeFileSync(targetFile, skeleton, 'utf8');
+      return textResult(`已生成:${targetFile}\n用 snapshot 看页面结构补选择器,然后 run_tests 或 retry_failed`);
     }
   );
 

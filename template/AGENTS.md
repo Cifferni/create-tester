@@ -16,14 +16,17 @@
 | `convert_case` | 用例文件(xlsx/xmind/csv/md/txt)→ 结构化文本 |
 | `snapshot` | 打开被测页面,返回可交互结构(定位元素用,替代一切手写选择器) |
 | `list_specs` | 列出 `tests/` 下的 spec |
-| `run_tests` | 后台跑 Playwright 测试,立即返回"运行中";跑完用 `failures` 轮询 |
+| `run_tests` | 后台跑 Playwright 测试,立即返回"运行中";跑完用 `status`/`failures` 轮询 |
+| `status` | 读报告返回通过/失败/耗时总览(一眼看清整轮结果) |
 | `failures` | 读报告返回失败详情;报告未生成 = 还在跑,稍后轮询 |
+| `retry_failed` | 只重跑上次失败的 spec(改完用例后用它收敛,不全量重跑) |
+| `generate_spec` | 根据 test-cases/ 用例生成 spec 骨架(含 apiRecorder 模板),再补选择器 |
 
 ## 流程
 
 1. `convert_case` 读懂用例
 2. `snapshot` 看页面结构(不碰源码、不写选择器)
-3. 写 `tests/*.spec.ts`
+3. `generate_spec` 生成骨架,补选择器到 `tests/*.spec.ts`
 4. `run_tests` 后台启动
-5. `failures` 轮询拿失败
-6. 分析根因,必要时改 spec 重跑
+5. `status` / `failures` 轮询拿结果
+6. 分析根因,改 spec 后用 `retry_failed` 只重跑失败的
