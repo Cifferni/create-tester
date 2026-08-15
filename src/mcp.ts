@@ -44,7 +44,7 @@ function textResult(text: string) {
 }
 
 function runMCP(): void {
-  const server = new McpServer({ name: 'tester', version: '0.4.0' });
+  const server = new McpServer({ name: 'tester', version: '0.5.0' });
 
   server.tool(
     'list_cases',
