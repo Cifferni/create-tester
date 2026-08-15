@@ -16,19 +16,26 @@ interface ElLike {
 }
 
 // 提取页面可交互结构给 AI 定位用
-export async function getPageSnapshot(page: Page, maxChars = 8000): Promise<string> {
+// opts.maxChars 缺省 4000(默认更省 token,需要多看可传大);opts.scope 只快照某个容器,更精准也更省
+export async function getPageSnapshot(
+  page: Page,
+  opts: { maxChars?: number; scope?: string } = {}
+): Promise<string> {
+  const maxChars = opts.maxChars ?? 4000;
+  const root = opts.scope || 'body';
   let primary = '';
   try {
-    const snap = await page.locator('body').ariaSnapshot();
+    const snap = await page.locator(root).ariaSnapshot();
     primary = typeof snap === 'string' ? snap : JSON.stringify(snap);
   } catch {
     primary = '';
   }
   const parts = [primary];
 
-  // DOM 补充:收集没有可访问名的可交互元素,用 class/title/alt 描述
+  // DOM 补充:收集没有可访问名的可交互元素,用 class/title/alt 描述(scope 时只扫容器内)
   try {
     const extra = await page
+      .locator(root)
       .locator('button, a, input, select, textarea, img, [role], [data-testid]')
       .evaluateAll((els) =>
         els

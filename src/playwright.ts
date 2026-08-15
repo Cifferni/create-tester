@@ -120,9 +120,9 @@ export function parseJsonReport(raw: string): TestFailure[] {
               // 报告里用例标题在 spec.title(tests[] 没有 title 字段)
               title: sp.title || t.title || '',
               error: result?.error?.message || t.error?.message || '(无错误信息)',
-              // 透出每条用例的 console 输出,诊断不用再手扒报告
-              stdout: joinLines(result?.stdout, 4000),
-              stderr: joinLines(result?.stderr, 2000)
+              // 透出每条用例的 console 输出(只给开头一段,诊断看头部足够,省 token)
+              stdout: joinLines(result?.stdout, 600),
+              stderr: joinLines(result?.stderr, 400)
             });
           }
         }

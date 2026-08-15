@@ -95,9 +95,13 @@ function runMCP(): void {
 
   server.tool(
     'snapshot',
-    '打开被测页面,返回当前页面的可交互结构快照(按钮/输入框/链接等),用于定位元素',
-    { url: z.string().optional().describe('要打开的页面地址,缺省用 BASE_URL / playwright.config.ts 的 baseURL') },
-    async ({ url }) => {
+    '打开被测页面,返回当前页面的可交互结构快照(按钮/输入框/链接等),用于定位元素。默认 4000 字符省 token;大页面可传 scope 只快照某个区域,或 maxChars 调大',
+    {
+      url: z.string().optional().describe('要打开的页面地址,缺省用 BASE_URL / playwright.config.ts 的 baseURL'),
+      scope: z.string().optional().describe('CSS 选择器:只快照这个容器(如 .card-list),更精准更省 token'),
+      maxChars: z.number().optional().describe('返回字符上限,缺省 4000;想多看整个页面传大些(如 12000)')
+    },
+    async ({ url, scope, maxChars }) => {
       const { baseURL, browser } = playwrightConfig(url);
       // 复用 server 内的共享浏览器,只开关页面
       const pw = await launchBrowser(browser as BrowserName, { headless: true });
@@ -111,7 +115,7 @@ function runMCP(): void {
       });
       try {
         await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
-        const snapshot = await getPageSnapshot(page);
+        const snapshot = await getPageSnapshot(page, { scope, maxChars });
         const extra = events.length ? `\n\n--- 页面事件 ---\n${events.join('\n')}` : '';
         return textResult(`页面地址:${baseURL}\n\n${snapshot}${extra}`);
       } finally {

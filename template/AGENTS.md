@@ -55,6 +55,7 @@
 ## 性能与纪律(务必遵守,否则一次任务跑 30 分钟)
 
 - **探查一律用 `snapshot` / `inspect`,禁止写临时 spec / probe 脚本。** 一次调用尽量覆盖多个问题(传多个选择器、`inspect` 批量)。
+- **省 token**:大页面别整页 `snapshot`,先 `snapshot {scope:'容器选择器'}` 精准看区域;要更多细节再调大 `maxChars`。失败的 stdout/stderr 只透出开头一段,够判断就行。
 - **纯图标按钮**:看 `snapshot` 补充区(有 `class`/`svg` path 特征)或用 `inspect` 拿 outerHTML 里的 `<svg><path d=...>`。
 - **改完 spec 用 `retry_failed` 单点验证,不要全量重跑。** 全量只留到最后确认一次。
 - **先探查、再改**:定位/断言失败时,先用 `snapshot`/`inspect` 确认页面真实结构,不要靠反复全量跑试错。
