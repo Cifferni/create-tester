@@ -20,7 +20,7 @@
 | `tester_login` / `tester_login_status` | 验证码人工登录 / 确认登录态(多账号用 TESTER_ACCOUNT) |
 | `tester_list_specs` | 列 `tests/` spec |
 | `tester_run_tests` / `tester_retry_failed` | 后台跑全部 / 只重跑失败的;支持 `grep` 按标签/标题筛选;跑前 esbuild 语法预检 |
-| `tester_status` / `tester_failures` | 结果总览 / 失败详情(含**错误分类**定位/断言/网络/超时/脚本/其他 + stdout/stderr) |
+| `tester_status` / `tester_failures` / `tester_wait_result` | 结果总览 / 失败详情(含**错误分类**定位/断言/网络/超时/脚本/其他 + stdout/stderr)/ 一次调用等结果(server 端轮询) |
 | `tester_generate_spec` | 用例 → spec 骨架(含 apiRecorder + 业务断言模板) |
 | `tester_env_reset` | 还原环境(跑会改数据的回归前调) |
 
@@ -30,7 +30,9 @@
 
 ## 流程
 
-`tester_convert_case` 读用例 → `browser_snapshot`/`browser_find` 看结构 → `tester_generate_spec` 生成骨架、补选择器 → `tester_run_tests` 后台 → `tester_status`/`tester_failures` 轮询(先看错误分类再定位根因)→ 改后用 `tester_retry_failed` 单点验证。
+`tester_convert_case` 读用例 → `browser_snapshot`/`browser_find` 看结构 → `tester_generate_spec` 生成骨架、补选择器 → `tester_run_tests` 后台 → **`tester_wait_result` 一次等结果**(或 `tester_status`/`tester_failures` 轮询,先看错误分类再定位根因)→ 改后用 `tester_retry_failed` 单点验证。
+
+> **禁止用终端 sleep/Start-Sleep 等待测试结果**——等结果一律用 `tester_wait_result`(server 端内部轮询,不弹终端)。
 
 ## 零负担(测试人员只聊天,不碰文件)
 

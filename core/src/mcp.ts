@@ -309,6 +309,55 @@ function runMCP(): void {
   );
 
   server.tool(
+    'tester_wait_result',
+    '等待上一轮测试出结果:在 server 端轮询 test-result/test-results.json,直到报告生成或超时(默认 30s,最多 55s,受 MCP 客户端请求超时限制)。返回通过/失败/跳过/耗时总览 + 失败详情。**禁止用终端 sleep 等待测试**——等结果就用这个,一次调用即可',
+    {
+      timeout: z.number().optional().describe('最多等多少秒,默认 30,上限 55(客户端请求超时限制)'),
+      file: z.string().optional().describe('JSON 报告路径,默认 test-result/test-results.json')
+    },
+    async ({ timeout, file }) => {
+      const report = cwdResolve(file || 'test-result/test-results.json');
+      const maxMs = Math.min(Math.max(timeout ?? 30, 1), 55) * 1000;
+      const deadline = Date.now() + maxMs;
+      // 内部轮询,不依赖客户端 sleep
+      while (Date.now() < deadline) {
+        if (fs.existsSync(report)) {
+          try {
+            const s = summarizeJsonReport(fs.readFileSync(report, 'utf8'));
+            if (s) {
+              // 报告器插件
+              for (const p of plugins.reporters) {
+                try {
+                  void p.onSummary?.(s);
+                } catch {}
+              }
+              const out: string[] = [
+                `通过 ${s.passed} / 失败 ${s.failed} / 跳过 ${s.skipped} / 共 ${s.total} / 耗时 ${s.durationMs}ms`
+              ];
+              if (s.failures.length) {
+                out.push(`失败详情:`);
+                for (const f of s.failures) {
+                  out.push(`\n【${f.title}】[${f.category || '其他'}]`);
+                  if (f.error && f.error !== '(无错误信息)') out.push(f.error);
+                  if (f.stdout) out.push(`stdout:\n${f.stdout}`);
+                  if (f.stderr) out.push(`stderr:\n${f.stderr}`);
+                }
+              } else {
+                out.push('(全部通过)');
+              }
+              return textResult(out.join('\n'));
+            }
+          } catch {
+            // 报告刚写入可能不完整,继续等
+          }
+        }
+        await new Promise((r) => setTimeout(r, 1000));
+      }
+      return textResult(`等待超时(${maxMs / 1000}s):报告仍未生成,测试可能仍在跑。可再调一次 tester_wait_result 或 tester_status。`);
+    }
+  );
+
+  server.tool(
     'tester_retry_failed',
     '后台重跑上一次报告中的失败用例(只重跑失败的 spec,不做全量),立即返回"运行中",用 tester_status/tester_failures 轮询。不做同步等待(客户端 MCP 有请求超时)。跑前同样做 esbuild 语法预检。可用 grep 只重跑匹配标签/标题的失败用例',
     {
