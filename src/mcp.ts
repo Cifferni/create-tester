@@ -69,7 +69,7 @@ function runMCP(): void {
     null,
     2
   ));
-  const server = new McpServer({ name: 'tester', version: '0.5.1' });
+  const server = new McpServer({ name: 'tester', version: '0.5.2' });
 
   server.tool(
     'list_cases',
