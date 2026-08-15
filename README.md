@@ -61,6 +61,7 @@ create-tester upgrade         # 升级当前工程到最新引擎(在工程根�
 tester init                   # 初始化目录规范(幂等)
 tester run                    # 运行测试(透传 playwright test)
 tester mcp                    # 启动 MCP stdio server,打印可粘贴配置
+tester diag                   # 诊断环境(依赖/配置/目录/MCP 握手)
 tester install-browsers       # 安装 Playwright 浏览器(postinstall 自动调用)
 ```
 
@@ -116,6 +117,7 @@ test('登录成功', async ({ page }) => {
 | `failures` | 读报告,返回全貌 + 失败详情(含 stdout/stderr 日志) |
 | `retry_failed` | 只重跑上次失败的 spec(收敛失败循环) |
 | `generate_spec` | 按 test-cases/ 用例生成 spec 骨架(含 apiRecorder + 业务断言模板) |
+| `verify_locators` | 跑前预检 spec 选择器(命中/未命中,避免空跑) |
 | `env_reset` | 执行工程 `mcp/env-reset.cjs` 还原环境(跑会改数据的回归前调用) |
 
 ## 生成的测试项目

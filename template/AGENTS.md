@@ -16,6 +16,7 @@
 | `run_tests` / `retry_failed` | 后台跑全部 / 只重跑失败的 |
 | `status` / `failures` | 结果总览 / 失败详情(含 stdout/stderr) |
 | `generate_spec` | 用例 → spec 骨架 |
+| `verify_locators` | 跑前预检 spec 选择器(命中/未命中,避免空跑) |
 | `env_reset` | 还原环境(跑会改数据的回归前调) |
 
 ## 流程

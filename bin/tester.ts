@@ -57,6 +57,38 @@ program
     await runPlaywrightInstall(list);
   });
 
+program
+  .command('diag')
+  .description('诊断测试工程环境:依赖/配置/目录/MCP 握手,一键定位问题')
+  .action(async () => {
+    const root = process.cwd();
+    let allOk = true;
+    const mark = (ok: boolean, label: string, detail = ''): void => {
+      if (!ok) allOk = false;
+      console.log(`${ok ? '✓' : '✗'} ${label}${detail ? '  ' + detail : ''}`);
+    };
+    // 依赖
+    for (const dep of ['@playwright/test', 'playwright', '@modelcontextprotocol/sdk', 'zod', 'jiti', 'xlsx']) {
+      try {
+        require.resolve(`${dep}/package.json`, { paths: [root] });
+        mark(true, `依赖 ${dep}`);
+      } catch {
+        mark(false, `依赖 ${dep}`, '(未安装,在工程根目录 npm install)');
+      }
+    }
+    // 配置文件与目录
+    const cfg = path.join(root, 'playwright.config.ts');
+    mark(fs.existsSync(cfg), 'playwright.config.ts', fs.existsSync(cfg) ? '' : '(缺失,可 tester init 或重建工程)');
+    for (const d of ['test-cases', 'tests', 'mcp']) {
+      const p = path.join(root, d);
+      mark(fs.existsSync(p), `目录 ${d}/`, fs.existsSync(p) ? '' : '(缺失)');
+    }
+    // MCP 握手
+    mark(await checkMcpHandshake(root), 'MCP server 握手', '');
+    console.log(allOk ? '\n环境正常,可以开测。' : '\n有环境问题,按 ✗ 项修复。');
+    process.exit(allOk ? 0 : 1);
+  });
+
 function defaultSpecFiles(): string[] {
   const dir = path.join(process.cwd(), 'tests');
   if (!fs.existsSync(dir)) return [];
@@ -69,6 +101,39 @@ function defaultSpecFiles(): string[] {
 async function runPlaywrightInstall(names: string[]): Promise<void> {
   const child = spawn('npx', ['playwright', 'install', ...names], { stdio: 'inherit', shell: true, windowsHide: true });
   await new Promise((resolve) => child.on('close', resolve));
+}
+
+// 启动 mcp/server.cjs 发 initialize,确认能握手
+function checkMcpHandshake(root: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    const server = path.join(root, 'mcp', 'server.cjs');
+    if (!fs.existsSync(server)) {
+      resolve(false);
+      return;
+    }
+    const child = spawn(process.execPath, [server], { cwd: root, stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+    let done = false;
+    const finish = (ok: boolean): void => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      child.kill();
+      resolve(ok);
+    };
+    const timer = setTimeout(() => finish(false), 10000);
+    child.stdout.on('data', (d) => {
+      if (String(d).includes('serverInfo')) finish(true);
+    });
+    child.on('error', () => finish(false));
+    child.stdin.write(
+      JSON.stringify({
+        jsonrpc: '2.0',
+        id: 1,
+        method: 'initialize',
+        params: { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'diag', version: '1' } }
+      }) + '\n'
+    );
+  });
 }
 
 program.parseAsync(process.argv).catch((e: Error) => {

@@ -185,6 +185,56 @@ function runMCP(): void {
   );
 
   server.tool(
+    'verify_locators',
+    '跑前预检 spec 里的选择器:打开页面逐个探活,命中/未命中列表,避免空跑。支持 getByTestId/getByText/getByRole/locator(css)',
+    {
+      files: z.array(z.string()).optional().describe('要检查的 spec 文件,缺省 tests/ 全部'),
+      url: z.string().optional().describe('页面地址,缺省 BASE_URL')
+    },
+    async ({ files, url }) => {
+      const list = files && files.length ? files : defaultSpecFiles();
+      if (!list.length) return textResult('没有 spec 文件');
+      // 从 spec 源码提取选择器(方法 + 首参)
+      const re = /(getByTestId|getByText|getByRole|locator)\(\s*(['"])([^'"]*)\2/g;
+      const byFile = new Map<string, Array<{ method: string; val: string }>>();
+      for (const f of list) {
+        const src = fs.readFileSync(f, 'utf8');
+        const items: Array<{ method: string; val: string }> = [];
+        let m: RegExpExecArray | null;
+        while ((m = re.exec(src))) items.push({ method: m[1], val: m[3] });
+        if (items.length) byFile.set(f, items);
+      }
+      if (!byFile.size) return textResult('没有提取到可检查的选择器');
+      const { baseURL, browser } = playwrightConfig(url);
+      const pw = await launchBrowser(browser as BrowserName, { headless: true });
+      const page = await pw.newPage();
+      try {
+        await page.goto(baseURL, { waitUntil: 'domcontentloaded' });
+        const out: string[] = [`检查页面:${baseURL}`];
+        for (const [file, items] of byFile) {
+          out.push(`\n【${path.basename(file)}】`);
+          for (const { method, val } of items) {
+            try {
+              const loc =
+                method === 'getByTestId' ? page.getByTestId(val)
+                : method === 'getByText' ? page.getByText(val)
+                : method === 'getByRole' ? page.getByRole(val as never)
+                : page.locator(val);
+              const n = await loc.count();
+              out.push(`${n > 0 ? '✓ 命中' : '✗ 未命中'} [${method}('${val}')] ${n > 0 ? `×${n}` : ''}`);
+            } catch (e) {
+              out.push(`⚠ 无效 [${method}('${val}')] ${(e as Error).message.slice(0, 80)}`);
+            }
+          }
+        }
+        return textResult(out.join('\n'));
+      } finally {
+        await page.close();
+      }
+    }
+  );
+
+  server.tool(
     'env_reset',
     '执行工程内的环境清理脚本(mcp/env-reset.cjs),还原被测环境(删测试数据/还原状态),保证回归可复跑。脚本由 AI 按被测应用实现;跑会改数据的回归前建议先调它',
     {},
