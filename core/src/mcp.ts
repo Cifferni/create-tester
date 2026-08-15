@@ -21,6 +21,19 @@ import { loadPlugins } from './plugins';
 import { playwrightConfig } from './config';
 import { startPlaywrightTest, summarizeJsonReport, failedSpecFiles } from './playwright';
 
+// 包版本:通过包名解析到安装位置的 package.json(避开 esbuild 内联相对路径的坑)
+function coreVersion(): string {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const resolved = require.resolve('@create-tester/core/package.json');
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const pkg = require(resolved) as { version?: string };
+    return pkg.version || 'unknown';
+  } catch {
+    return 'unknown';
+  }
+}
+
 // 项目根目录:优先用 tester mcp <dir> 传的,缺省 process.cwd()
 function projectRoot(): string {
   return process.env.TESTER_PROJECT_ROOT || process.cwd();
@@ -80,7 +93,7 @@ function runMCP(): void {
     null,
     2
   ));
-  const server = new McpServer({ name: 'tester', version: '0.5.6' });
+  const server = new McpServer({ name: 'tester', version: coreVersion() });
   // 插件体系:加载工程 plugin/ 目录的自定义插件(报告器/用例解析器/录制器)
   const plugins = loadPlugins(root);
 
