@@ -42,7 +42,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@create-tester/core": "^0.7.1",
+    "@create-tester/core": "^0.7.2",
     "commander": "^12.1.0",
     "prompts": "^2.4.2"
   },

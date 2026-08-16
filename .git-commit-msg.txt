@@ -1,7 +1,1 @@
-feat: 新增 login.enabled 开关——不需要登录的项目跳过登录、不依赖 auth 文件,直接测
-
-- tester.config.ts 加 login.enabled(默认 true);TESTER_LOGIN=0 可临时关
-- playwright.config.ts: login 关时去掉 auth.setup 项目、storageState 置 undefined(不再因 auth 文件缺失报错)
-- auth.setup.ts: 加 TESTER_LOGIN 守卫双保险
-- config.ts: loginEnabled() 解析;tester_config 工具展示登录开关;README 环境变量表补 TESTER_LOGIN
-- 验证: login 开=2项目+storageState;关=1项目+无storageState
+chore: bump core 0.7.2(loginEnabled)与主包——login 开关随包发布
