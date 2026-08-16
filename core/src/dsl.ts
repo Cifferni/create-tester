@@ -117,13 +117,13 @@ export function dslToCode(dsl: CaseDsl): string {
         lines.push(`  await page.goto('${s.target || '/'}');`);
         break;
       case 'click':
-        lines.push(`  await page.getByTestId('${s.target}').click(); // 点击:${s.target}(若用文本/role,按优先级调整)`);
+        lines.push(`  await selfHeal(page, ['${s.target}']).then((el) => el.click()); // 点击:${s.target}(可给 selfHeal 加文本/role 候选)`);
         break;
       case 'fill':
-        lines.push(`  await page.getByTestId('${s.target}').fill('${s.value || ''}'); // 输入:${s.value}` + (s.target ? ` 到 ${s.target}` : ''));
+        lines.push(`  await selfHeal(page, ['${s.target}']).then((el) => el.fill('${s.value || ''}')); // 输入:${s.value} 到 ${s.target}`);
         break;
       case 'select':
-        lines.push(`  await page.getByTestId('${s.target}').selectOption('${s.value || ''}');`);
+        lines.push(`  await selfHeal(page, ['${s.target}']).then((el) => el.selectOption('${s.value || ''}'));`);
         break;
       case 'wait':
         lines.push(`  await waitForText(page, '${s.expect || ''}'); // 等待:${s.expect}`);
@@ -142,4 +142,26 @@ export function dslToCode(dsl: CaseDsl): string {
     }
   }
   return lines.join('\n');
+}
+
+// 从用例"预期"生成断言代码:URL 命中 → toHaveURL;文案 → toHaveText;接口关键字 → expectApi 占位。
+export function dslToAssertions(dsl: CaseDsl): string {
+  if (!dsl.expected.length) return '  // ⚠ 用例没有"预期"列,请补充业务断言(禁止只点不验)';
+  const lines: string[] = [];
+  for (const exp of dsl.expected) {
+    const e = exp.trim();
+    if (!e) continue;
+    if (/^(http|https|\/)/.test(e)) {
+      lines.push(`  await expect(page).toHaveURL(/${escapeRegExp(e)}/); // 预期跳转:${e}`);
+    } else if (/\/api\//.test(e)) {
+      lines.push(`  // 预期接口:${e}(用 apiRecorder 捕获后断言,如 expectApi(api, '${e}').code('0'))`);
+    } else {
+      lines.push(`  await expect(page.getByText('${e}')).toBeVisible(); // 预期文案:${e}`);
+    }
+  }
+  return lines.join('\n');
+}
+
+function escapeRegExp(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }

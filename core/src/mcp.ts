@@ -15,11 +15,12 @@ import { z } from 'zod';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { readCaseFile } from './cases';
-import { formatSyntaxErrors } from './checkSyntax';
+import { checkSpecQuality } from './checkSyntax';
 import { closeBrowser } from './browser';
 import { loadPlugins } from './plugins';
 import { playwrightConfig } from './config';
-import { startPlaywrightTest, summarizeJsonReport, failedSpecFiles } from './playwright';
+import { parseCaseToDsl, dslToCode, dslToAssertions } from './dsl';
+import { startPlaywrightTest, runPlaywrightTest, runWithRetry, summarizeJsonReport, failedSpecFiles } from './playwright';
 
 // 包版本:通过包名解析到安装位置的 package.json(避开 esbuild 内联相对路径的坑)
 function coreVersion(): string {
@@ -222,15 +223,18 @@ function runMCP(): void {
       const list = files && files.length ? files : defaultSpecFiles();
       if (!list.length) return textResult(JSON.stringify({ error: '没有可运行的测试文件' }, null, 2));
       const root = projectRoot();
-      // 语法预检:先验 spec 能解析,避免把跑不起来的脚本交给 Playwright 空跑
-      const syntaxIssues: string[] = [];
+      // 语法 + 纪律预检:先验 spec 能解析、无违规,避免把跑不起来的脚本交给 Playwright 空跑
+      const fatalIssues: string[] = [];
+      const warnings: string[] = [];
       for (const f of list) {
-        const errs = await formatSyntaxErrors(f);
-        if (errs) syntaxIssues.push(`${f}\n${errs}`);
+        const q = await checkSpecQuality(f);
+        fatalIssues.push(...q.fatal);
+        warnings.push(...q.warnings);
       }
-      if (syntaxIssues.length) {
+      if (fatalIssues.length) {
         return textResult(
-          `以下 spec 存在语法错误,已停止运行(请先修复再跑):\n\n${syntaxIssues.join('\n\n')}`
+          `以下 spec 存在问题,已停止运行(请先修复再跑):\n\n${fatalIssues.join('\n\n')}` +
+            (warnings.length ? `\n\n(警告,不阻塞运行):\n${warnings.join('\n')}` : '')
         );
       }
       // 清掉旧报告:让 tester_status/tester_failures 的"未找到报告"能区分"还在跑"
@@ -242,11 +246,59 @@ function runMCP(): void {
       const { pid } = startPlaywrightTest(list, root, { headed, workers, grep });
       return textResult(
         JSON.stringify(
-          { status: 'running', pid, grep: grep || undefined, note: '测试在后台运行,用 tester_status/tester_failures 轮询结果(未找到报告=仍在跑)' },
+          { status: 'running', pid, grep: grep || undefined, warning: warnings.length ? warnings : undefined, note: '测试在后台运行,用 tester_status/tester_failures 轮询结果(未找到报告=仍在跑)' },
           null,
           2
         )
       );
+    }
+  );
+
+  server.tool(
+    'tester_run_and_wait',
+    '同步跑测试并等结果,一次调用完成"跑+等",定位/网络/超时失败自动重试最多 max_retries 轮(断言失败不自动重试,可能是真 bug)。适合中小测试集;大测试集会超过客户端请求超时,应改用 tester_run_tests(后台)+tester_wait_result',
+    {
+      files: z.array(z.string()).optional().describe('要跑的 spec 文件列表,缺省跑全部'),
+      grep: z.string().optional().describe('只跑匹配的用例(标签或标题关键字)'),
+      max_retries: z.number().optional().describe('定位/网络/超时失败最多自动重试几轮,默认 2,上限 4'),
+      timeout: z.number().optional().describe('每轮超时秒数,默认 180')
+    },
+    async ({ files, grep, max_retries, timeout }) => {
+      const list = files && files.length ? files : defaultSpecFiles();
+      if (!list.length) return textResult(JSON.stringify({ error: '没有可运行的测试文件' }, null, 2));
+      const root = projectRoot();
+      // 语法 + 纪律预检
+      const fatalIssues: string[] = [];
+      for (const f of list) {
+        const q = await checkSpecQuality(f);
+        fatalIssues.push(...q.fatal);
+      }
+      if (fatalIssues.length) {
+        return textResult(`以下 spec 存在问题,已停止运行:\n\n${fatalIssues.join('\n\n')}`);
+      }
+      try {
+        fs.rmSync(path.join(root, 'test-result', 'test-results.json'), { force: true });
+      } catch {}
+      const { failures, attempts } = await runWithRetry(list, root, {
+        maxRounds: Math.min(Math.max(max_retries ?? 2, 0), 4),
+        timeoutMs: (timeout ?? 180) * 1000
+      });
+      const byCat = new Map<string, number>();
+      for (const f of failures) {
+        const c = f.category || '其他';
+        byCat.set(c, (byCat.get(c) || 0) + 1);
+      }
+      const out: string[] = [
+        `共 ${list.length} 组文件 | 失败 ${failures.length} | 自动重试 ${attempts - 1} 轮`,
+        failures.length ? `错误分类:${[...byCat.entries()].map(([c, n]) => `${c} ${n}`).join(' | ')}` : '(全部通过)'
+      ];
+      for (const f of failures) {
+        out.push(`\n【${f.title}】[${f.category || '其他'}]`);
+        if (f.error && f.error !== '(无错误信息)') out.push(f.error);
+        if (f.stdout) out.push(`stdout:\n${f.stdout}`);
+        if (f.stderr) out.push(`stderr:\n${f.stderr}`);
+      }
+      return textResult(out.join('\n'));
     }
   );
 
@@ -370,13 +422,13 @@ function runMCP(): void {
       if (!fs.existsSync(report)) return textResult('未找到上次报告:test-result/test-results.json(先跑一次 tester_run_tests)');
       const files = failedSpecFiles(fs.readFileSync(report, 'utf8'));
       if (!files.length) return textResult('上次报告中没有失败用例,无需重跑');
-      const syntaxIssues: string[] = [];
+      const fatalIssues: string[] = [];
       for (const f of files) {
-        const errs = await formatSyntaxErrors(f);
-        if (errs) syntaxIssues.push(`${f}\n${errs}`);
+        const q = await checkSpecQuality(f);
+        fatalIssues.push(...q.fatal);
       }
-      if (syntaxIssues.length) {
-        return textResult(`以下失败 spec 存在语法错误,已停止重跑(请先修复再跑):\n\n${syntaxIssues.join('\n\n')}`);
+      if (fatalIssues.length) {
+        return textResult(`以下失败 spec 存在语法/纪律问题,已停止重跑(请先修复再跑):\n\n${fatalIssues.join('\n\n')}`);
       }
       try {
         fs.rmSync(path.join(projectRoot(), 'test-result', 'test-results.json'), { force: true });
@@ -394,7 +446,7 @@ function runMCP(): void {
 
   server.tool(
     'tester_generate_spec',
-    '根据 test-cases/ 下的用例文件生成一个 Playwright spec 骨架(含 apiRecorder/断言模板),写到 tests/<feature>/。AI 再用官方 browser_snapshot 看页面结构补选择器,然后 run_tests',
+    '根据 test-cases/ 下的用例文件生成 Playwright spec:先用 DSL 解析(操作→可执行步骤,预期→断言),生成带操作/断言的完整代码(选择器用 selfHeal 多候选占位),AI 只需核对/微调选择器,不用从空白骨架补。写到 tests/<feature>/',
     {
       case: z.string().describe('test-cases/ 下的用例文件,如 test-cases/登录.xlsx'),
       feature: z.string().optional().describe('功能模块名,决定 tests/ 下子目录;缺省用用例文件名'),
@@ -420,70 +472,35 @@ function runMCP(): void {
       const goto = url
         ? `  await page.goto('${url}');`
         : `  // await page.goto('/');  // 用 browser_snapshot 看结构后填路径`;
+      // DSL:结构化用例 → 操作代码 + 断言代码(代码层生成,AI 只微调选择器)
+      const dsl = parseCaseToDsl(text, base);
+      const ops = dslToCode(dsl).split('\n');
+      const asserts = dslToAssertions(dsl).split('\n');
+      const opBody = ops.length ? ops.join('\n') : `  // ⚠ 未识别到"操作"步骤,请用 browser_snapshot 看结构后补操作`;
+      const assertBody = asserts.join('\n');
       const skeleton = `import { test, expect } from '@playwright/test';
 import { apiRecorder, expectApi, waitForVisible, waitForClickable, waitForText, waitForURL, selfHeal, mockRoute, tamperResponse } from '@create-tester/core';
 
 // 用例来源: ${caseRef}
 ${guide}
-// 填写规则:
-// 1. 每个用例必须有"业务结果断言",禁止只点不验。
-// 2. 断言依据 = 用例文档的"预期"列,不是页面现状;页面与预期不符时报告,不要改断言迁就页面。
-// 3. 需要登录时:import { ensureLoggedIn } from '../../_login'; 用例开头 await ensureLoggedIn(page);
-// 4. 禁止 page.waitForTimeout(硬编码延时):要等就用 waitForVisible/waitForClickable/waitForText/waitForURL,等状态不等时间。
-// 5. 标签分组:按需加 tag 供选择性执行,如 test('标题', { tag: ['@smoke'] }, ...);跑时 tester_run_tests {grep: '@smoke'} 只跑冒烟。
+// 说明:以下操作/断言由用例自动生成(DSL),选择器是 selfHeal 占位——用 browser_snapshot 看结构后核对/微调每个 selfHeal 的候选即可。
+// 1. 每个用例必须有业务断言,禁止只点不验。
+// 2. 断言依据 = 用例文档"预期",不是页面现状;不符就报告,不改断言迁就。
+// 3. 需要登录:import { ensureLoggedIn } from '../../_login'; 用例开头 await ensureLoggedIn(page);
 
 test('${firstMeaningfulLine(text) || base}', async ({ page }) => {
   const api = apiRecorder(page);
 ${goto}
 
-  // ── 操作:用 browser_snapshot 看结构后补定位器(优先级:data-testid → getByRole → css/class → getByText 唯一兜底) ──
-  // 例: await page.getByTestId('username').fill('test01');
-  //     await page.getByTestId('login-submit').click();
-  //     await page.getByRole('button', { name: '保存' }).click();
+  // ── 操作(DSL 自动生成,核对 selfHeal 候选) ──
+${opBody}
 
-  // ── 等待(禁止 waitForTimeout,等状态不等时间) ──
-  // 元素就绪前 Playwright 会自动等,一般不用写等待。确实要等时用智能等待:
-  // 例: await waitForVisible(page.getByTestId('save-btn'));
-  //     await waitForClickable(page.getByTestId('submit'));
-  //     await waitForText(page, '操作成功');
-  //     await waitForURL(page, /\/home/);
-
-  // ── 业务断言(至少满足一条,严禁只点不验) ──
-  // 接口层(推荐,最硬):操作触发的接口断言业务码/字段/状态码
-  // 例: await expectApi(api, '/api/login').code('0');
-  //     await expectApi(api, '/api/login').field('data.token').notEmpty();
-  //     await expectApi(api, '/api/login').status(200);
-  // 字段断言扩展:正则/数组包含/区间
-  //     await expectApi(api, '/api/order').field('data.orderNo').matches(/^SO\d+$/);
-  //     await expectApi(api, '/api/order').field('data.items').containsValue('SKU-001');
-  //     await expectApi(api, '/api/order').field('data.total').between(100, 999);
-  // 页面层:结果必须可观察(跳转/文案/元素状态/值)
-  // 例: await expect(page).toHaveURL(/\/home/);
-  //     await expect(page.getByText('保存成功')).toBeVisible();
-  //     await expect(page.getByTestId('switch')).toHaveClass(/on/);
-
-  // ── 环境数据(改数据类用例) ──
-  // 造数据 + 用后清理;判断新增/删除用计数对比(namesBefore/namesAfter),不要靠名字唯一。
-
-  // ── 自愈(首选选择器不稳时用) ──
-  // const saveBtn = await selfHeal(page, ['save-btn', '保存', 'button:has-text("保存")']);
-  // await saveBtn.click();   // 按候选顺序自动探测,第一个命中即用
-
-  // ── 接口 mock/篡改(造数据、模拟异常响应;真回归不用,保持诚实) ──
-  // await mockRoute(page, '**/api/login', { body: { code: '0', data: { token: 'mock' } } });
-  // await tamperResponse(page, '**/api/order', async (route) => route.fulfill({ status: 500 }));
-
-  // ── 数据驱动(多组参数循环,写在文件顶层,不在单个 test 内) ──
-  // 把测试数据放同目录 data.csv(第一行表头,如 用户名,密码,期望),然后在 spec 顶层循环:
-  // import { readDataRows } from '@create-tester/core';
-  // const data = readDataRows(__dirname + '/data.csv');
-  // for (const row of data.rows) {
-  //   test(\`登录 \${row['用户名']}\`, async ({ page }) => { ... 用 row['密码'] ... });
-  // }
+  // ── 业务断言(DSL 自动生成,核对期望) ──
+${assertBody}
 });
 `;
       fs.writeFileSync(targetFile, skeleton, 'utf8');
-      return textResult(`已生成:${targetFile}\n用 browser_snapshot 看页面结构补选择器、补业务断言,然后 run_tests 或 retry_failed`);
+      return textResult(`已生成:${targetFile}\n操作/断言已由用例自动生成(DSL),用 browser_snapshot 看页面结构核对 selfHeal 选择器,然后 tester_run_tests`);
     }
   );
 

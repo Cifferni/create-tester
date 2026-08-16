@@ -4,7 +4,7 @@
 
 1. 页面操作用**官方 playwright MCP**(`browser_*`),跑测试/管用例用**tester MCP**。禁止裸 Playwright 脚本、临时 spec、抓前端源码(`/src/**`)。
 2. 每个用例**必须有业务断言**,禁止只点不验;断言依据=用例文档"预期",不是页面现状(不符就报告,不改断言迁就)。
-3. **禁止 `waitForTimeout`/终端 sleep**:要等就用 `waitForVisible/Clickable/Text/URL`(等状态不等时间);等测试结果用 `tester_wait_result`(server 端轮询,不弹终端)。
+3. **禁止 `waitForTimeout`/终端 sleep**:要等就用 `waitForVisible/Clickable/Text/URL`;等测试结果用 `tester_run_and_wait`(同步+自动重试)或 `tester_wait_result`。**这些违规会被 tester_run_tests 的纪律预检代码拦截,无需自觉遵守。**
 4. 定位优先级:`getByTestId` > `getByRole+name` > CSS/class > `getByText`(仅兜底且唯一)。
 5. 快照 ref 过期即失效:操作报 "Ref not found" 一律**先重新 `browser_snapshot`**,再基于新 ref 操作,别拿旧 ref 硬试。
 6. 禁止 `browser_run_code_unsafe` 手写复杂 CSS(如 `svg path[d^=...]` 脆选择器):定位用 `browser_snapshot`/`browser_find` 拿 ref 或可访问名。
@@ -12,14 +12,14 @@
 ## 工具(两套 MCP)
 
 **tester**(测试工程,前缀 `tester_`):
-`tester_convert_case`(用例→文本)、`tester_generate_spec`(用例→骨架)、`tester_run_tests`(跑测,支持 grep/语法预检)、`tester_wait_result`(等结果,一次调用)、`tester_status`/`tester_failures`(总览/失败详情含错误分类)、`tester_retry_failed`(重跑失败)、`tester_list_cases`/`tester_list_specs`(列文件)、`tester_set_base_url`(改地址)、`tester_login`/`tester_login_status`(人工登录)、`tester_env_reset`(还原环境)。
+`tester_convert_case`(用例→文本)、`tester_generate_spec`(用例→**DSL 自动生成**操作+断言的 spec,AI 只核对选择器)、`tester_run_tests`(后台跑测,支持 grep/语法+纪律预检)、`tester_run_and_wait`(同步跑+等结果,定位/网络/超时自动重试)、`tester_wait_result`(等结果,一次调用)、`tester_status`/`tester_failures`(总览/失败详情含错误分类)、`tester_retry_failed`(重跑失败)、`tester_list_cases`/`tester_list_specs`(列文件)、`tester_set_base_url`(改地址)、`tester_login`/`tester_login_status`(人工登录)、`tester_env_reset`(还原环境)。
 
 **playwright**(官方,页面操作):
 `browser_snapshot`(看结构)、`browser_find`(搜文本)、`browser_click`/`browser_type`/`browser_navigate`/`browser_expect`(操作断言)、`browser_network_requests`(抓接口)、`browser_route`(mock)。
 
 ## 流程
 
-`tester_convert_case` 读用例 → `browser_snapshot`/`browser_find` 看结构 → `tester_generate_spec` 生成骨架 → `tester_run_tests` 后台 → `tester_wait_result` 等结果(先看错误分类定位根因)→ `tester_retry_failed` 单点验证。
+`tester_convert_case` 读用例 → `browser_snapshot`/`browser_find` 看结构 → `tester_generate_spec`(DSL 自动生成操作+断言,核对 selfHeal 选择器)→ `tester_run_tests` 后台(或 `tester_run_and_wait` 同步+自动重试)→ `tester_wait_result`/`tester_status` 等结果(先看错误分类定位根因)→ 改后用 `tester_retry_failed` 单点验证。
 
 ## 测试人员零负担
 

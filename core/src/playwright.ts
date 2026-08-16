@@ -220,3 +220,30 @@ export async function runPlaywrightTestPassthrough(files: string[], cwd: string)
     child.on('close', (code) => resolve(code ?? 1));
   });
 }
+
+// ── 失败重试(代码化,不让 AI 反复对话) ──
+// 定位/网络/超时 属于"可重试"的偶发失败,自动重跑最多 N 轮;断言失败是业务结果,不自动重试(可能是真 bug)。
+// 返回最终失败(带分类)。这个函数同步等结果,供"跑完一次性拿结果"的场景(如 tester_run_tests 的 wait 模式)。
+export interface RetryOptions {
+  maxRounds?: number; // 最多重试几轮,默认 2
+  timeoutMs?: number; // 单轮超时,默认 180s
+}
+
+export async function runWithRetry(
+  files: string[],
+  cwd: string,
+  opts: RetryOptions = {}
+): Promise<{ failures: TestFailure[]; attempts: number }> {
+  const { maxRounds = 2, timeoutMs = 180000 } = opts;
+  let attempts = 0;
+  const RETRYABLE: FailureCategory[] = ['定位', '网络', '超时'];
+  for (let round = 0; round <= maxRounds; round++) {
+    attempts++;
+    const { failures } = await runPlaywrightTest(files, cwd, { timeoutMs });
+    const retryable = failures.filter((f) => RETRYABLE.includes(f.category ?? '其他'));
+    if (!retryable.length) return { failures, attempts }; // 没有可重试的失败,结束
+    // 还有可重试失败且未到上限:整批重跑(定位/网络/超时多为偶发,整批重跑成本可接受)
+  }
+  const last = await runPlaywrightTest(files, cwd, { timeoutMs });
+  return { failures: last.failures, attempts: attempts + 1 };
+}
