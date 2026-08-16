@@ -1,24 +1,42 @@
 import { defineConfig, devices } from '@playwright/test';
 import { testerConfig } from './tester.config';
 import { authFileName } from './tests/_login';
+import { loadProjectEnv } from './scripts/_env.cjs';
+import path from 'path';
 
-// 配置来源:tester.config.ts(总开关面板,白话注释)+ 环境变量可覆盖
-//   BASE_URL         被测页面地址(默认 http://localhost:3000;显式设置优先于 envs 表)
-//   TESTER_BROWSER   浏览器:chromium/chrome/firefox/webkit(默认 chromium)
+// 加载项目根目录的 .env 与当前环境的 .env.<环境名>(环境名来自 TESTER_ENV 或 tester.config.ts 的 defaultEnv)。
+// 优先级:已设置的环境变量 > .env.<环境> > .env > tester.config.ts。
+loadProjectEnv(__dirname);
+
+// 配置来源:tester.config.ts(总开关面板,白话注释)+ 环境变量/.env 可覆盖
+//   BASE_URL         被测页面地址(显式设置优先于所有环境配置)
+//   TESTER_BROWSER   浏览器:chromium/chrome/firefox/webkit(优先级高于当前环境的 browser)
 //   TESTER_ACCOUNT   账号(缺省 default;多账号隔离时用,如 TESTER_ACCOUNT=admin 切第二个账号)
-//   TESTER_ENV       环境名(test/uat/prod 等),命中 testerConfig.envs 表则自动覆盖 BASE_URL
+//   TESTER_ENV       环境名(dev/test/uat/prod 等),命中 testerConfig.envs 表则用该环境的完整配置
+//   TESTER_LOGIN     是否登录:0=不登录/1=登录(优先级高于当前环境的 login)
 const ENVS = testerConfig.envs || {};
 const DEFAULT_ENV = testerConfig.defaultEnv || 'test';
 const ENV = process.env.TESTER_ENV || '';
-const BROWSER = process.env.TESTER_BROWSER || 'chromium';
+
+// 取某个环境的配置对象:envs 值可以是对象(新格式)或字符串地址(旧格式兼容)
+function envOf(name: string): { baseURL?: string; browser?: string; login?: boolean } {
+  const raw = ENVS[name];
+  if (!raw) return {};
+  if (typeof raw === 'string') return { baseURL: raw }; // 旧格式:环境名 -> 地址字符串
+  return raw;
+}
+
+// 当前生效环境的配置
+const cur = envOf(ENV || DEFAULT_ENV);
+// 被测地址优先级:显式 BASE_URL > 当前环境 baseURL > 默认环境的地址 > 兜底
+const BASE_URL = process.env.BASE_URL || cur.baseURL || envOf(DEFAULT_ENV).baseURL || 'http://localhost:3000';
+// 浏览器:env TESTER_BROWSER > 当前环境 browser > testerConfig.browser > 默认 chromium
+const BROWSER = process.env.TESTER_BROWSER || cur.browser || testerConfig.browser || 'chromium';
 const ACCOUNT = process.env.TESTER_ACCOUNT || 'default';
-// 被测系统是否需要登录(tester.config.ts 的 login.enabled;TESTER_LOGIN=0 可临时关闭)
-// 不需要登录的项目:不走登录、不依赖 auth 文件,直接跑
-const LOGIN = process.env.TESTER_LOGIN !== '0' && (testerConfig.login?.enabled ?? true);
+// 是否登录:env TESTER_LOGIN > 当前环境 login > testerConfig.login > 默认 true
+const LOGIN = process.env.TESTER_LOGIN !== '0' && (cur.login ?? testerConfig.login?.enabled ?? true);
 // 登录态文件:按 环境+账号 区分(auth-<env>-<account>.json),与 _login.ts/auth.setup.ts/login.cjs 保持一致
 const AUTH_FILE = authFileName();
-// 被测地址优先级:显式 BASE_URL > TESTER_ENV 命中 envs 表 > 默认环境的地址 > 兜底
-const BASE_URL = process.env.BASE_URL || (ENV ? ENVS[ENV] : ENVS[DEFAULT_ENV]) || 'http://localhost:3000';
 
 // tester 专属配置来自 tester.config.ts(re-export 供 @create-tester/core 读取;优先级 env > 本文件 > 默认)
 export { testerConfig };

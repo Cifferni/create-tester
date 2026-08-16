@@ -11,11 +11,37 @@ export interface PWConfig {
   browser: BrowserName;
 }
 
+/** 单个环境(dev/test/uat/prod 等)的完整配置 */
+export interface EnvConfig {
+  /** 该环境被测地址 */
+  baseURL: string;
+  /** 该环境用哪个浏览器(chromium/chrome/firefox/webkit),缺省用全局 browser */
+  browser?: BrowserName;
+  /** 该环境是否需要登录,缺省用全局 login.enabled */
+  login?: boolean;
+  /** 该环境的 VLM 视觉兜底配置(model/apiUrl/enabled/timeout);apiKey 走 .env.<环境> 的 TESTER_VLM_API_KEY */
+  vlm?: EnvVlmConfig;
+}
+
+/** 单个环境的 VLM 配置(apiKey 不在这里,走 .env.<环境> 的 TESTER_VLM_API_KEY,避免进 git) */
+export interface EnvVlmConfig {
+  /** 是否启用视觉降级(默认 false,配了 plugin 后自动生效) */
+  enabled?: boolean;
+  /** 视觉模型名(如 glm-4v / qwen-vl-max / gpt-4o),传给模型服务的标识 */
+  model?: string;
+  /** 视觉模型服务 API 地址(兼容 OpenAI 风格接口) */
+  apiUrl?: string;
+  /** 单次视觉定位超时秒数,默认 8(超时即放弃,不阻塞测试链路) */
+  timeout?: number;
+}
+
 export interface TesterConfig {
-  /** 多环境地址表(tester.config.ts 的 envs;TESTER_ENV 命中时切到对应地址) */
-  envs?: Record<string, string>;
-  /** 默认环境名:未传 TESTER_ENV 时用该环境的地址,缺省 'test' */
+  /** 多环境配置表:每个环境一段完整配置(地址/浏览器/登录/VLM key)。兼容旧格式:值可以是字符串地址 */
+  envs?: Record<string, EnvConfig | string>;
+  /** 默认环境名:未传 TESTER_ENV 时用该环境的配置,缺省 'test' */
   defaultEnv?: string;
+  /** 全局默认浏览器(环境没单独配 browser 时用),缺省 chromium */
+  browser?: BrowserName;
   /** 功能开关(环境变量可覆盖) */
   switches?: {
     /** 选择器持久缓存,对应 TESTER_LOCATOR_CACHE=0 关闭 */
@@ -30,7 +56,7 @@ export interface TesterConfig {
     /** 哪些失败分类可自动重试(缺省 定位/网络/超时) */
     retryable?: FailureCategory[];
   };
-  /** VLM 视觉降级兜底 */
+  /** VLM 视觉降级兜底(全局;apiKey 可被环境级 vlmApiKey 覆盖) */
   vlm?: {
     /** 是否启用视觉降级(默认 false,配了 plugin 后自动生效) */
     enabled?: boolean;
@@ -38,12 +64,12 @@ export interface TesterConfig {
     model?: string;
     /** 视觉模型服务 API 地址(兼容 OpenAI 风格接口) */
     apiUrl?: string;
-    /** API key(也可用环境变量 TESTER_VLM_API_KEY,env 优先级更高,避免写死在仓库) */
+    /** 全局 API key(也可用环境变量 TESTER_VLM_API_KEY;或按环境在 envs[x].vlmApiKey 配) */
     apiKey?: string;
     /** 单次视觉定位超时秒数,默认 8(超时即放弃,不阻塞测试链路) */
     timeout?: number;
   };
-  /** 登录开关:被测系统需要登录就 true(默认),不需要登录的项目改成 false 就不走登录、不依赖 auth 文件 */
+  /** 登录开关(全局默认;每个环境可用 envs[x].login 单独覆盖) */
   login?: {
     /** 是否需要登录(默认 true) */
     enabled?: boolean;
@@ -100,7 +126,20 @@ export function clearConfigCache(): void {
   cached = undefined;
 }
 
-// ── 开关解析:环境变量 > testerConfig.switches > 默认 ──
+// 当前环境名:TESTER_ENV 显式指定,否则用 tester.config.ts 的 defaultEnv,缺省 'test'
+export function currentEnv(): string {
+  return process.env.TESTER_ENV || testerConfig().defaultEnv || 'test';
+}
+
+// 取指定环境的配置(兼容旧格式:envs 值可能是字符串地址)
+export function envConfig(name?: string): EnvConfig {
+  const n = name || currentEnv();
+  const raw = testerConfig().envs?.[n];
+  if (typeof raw === 'string') return { baseURL: raw }; // 旧格式:环境名 -> 地址字符串
+  return raw || { baseURL: '' };
+}
+
+// ── 开关解析:环境变量 > 当前环境的配置 > testerConfig 全局 > 默认 ──
 
 export function locatorCacheEnabled(): boolean {
   if (process.env.TESTER_LOCATOR_CACHE !== undefined) return process.env.TESTER_LOCATOR_CACHE !== '0';
@@ -114,31 +153,52 @@ export function varsEnabled(): boolean {
   return s !== undefined ? s : true;
 }
 
+// 浏览器:env TESTER_BROWSER > 当前环境 browser > 全局 browser > 默认 chromium
+export function browserName(): BrowserName {
+  if (process.env.TESTER_BROWSER) return (process.env.TESTER_BROWSER as BrowserName);
+  const e = envConfig();
+  if (e.browser) return e.browser;
+  return (testerConfig().browser as BrowserName) || 'chromium';
+}
+
 // 当前生效的 tester 配置(含 env 覆盖后的最终值),供 tester_config 工具只读展示
-export function effectiveTesterConfig(): TesterConfig & { switchesResolved: { locatorCache: boolean; vars: boolean }; vlmResolved: boolean } {
+export function effectiveTesterConfig(): TesterConfig & {
+  switchesResolved: { locatorCache: boolean; vars: boolean };
+  vlmResolved: boolean;
+  currentEnv: string;
+  envResolved: EnvConfig;
+} {
   const c = testerConfig();
+  const cur = envConfig();
   return {
     ...c,
     switchesResolved: { locatorCache: locatorCacheEnabled(), vars: varsEnabled() },
-    vlmResolved: c.vlm?.enabled ?? false
+    vlmResolved: cur.vlm?.enabled ?? c.vlm?.enabled ?? false,
+    currentEnv: currentEnv(),
+    envResolved: cur
   };
 }
 
-// VLM 配置解析:env(TESTER_VLM_API_KEY) > testerConfig.vlm
+// VLM 配置解析:当前环境的 vlm 块(model/apiUrl/enabled/timeout) + apiKey 走 .env.<环境> 的 TESTER_VLM_API_KEY。
+// 兼容旧格式:环境没配 vlm 时回退到全局 testerConfig.vlm;apiKey 兼容旧的 envConfig().vlmApiKey。
 export function vlmConfig(): { enabled: boolean; model: string; apiUrl: string; apiKey: string; timeoutMs: number } {
-  const v = testerConfig().vlm ?? {};
+  const cur = envConfig().vlm;
+  const global = testerConfig().vlm ?? {};
+  const v = cur ?? global;
   return {
     enabled: v.enabled ?? false,
-    model: v.model || '',
-    apiUrl: v.apiUrl || '',
-    apiKey: process.env.TESTER_VLM_API_KEY || v.apiKey || '',
-    timeoutMs: Math.max((v.timeout ?? 8), 1) * 1000
+    model: v.model || global.model || '',
+    apiUrl: v.apiUrl || global.apiUrl || '',
+    apiKey: process.env.TESTER_VLM_API_KEY || (envConfig() as { vlmApiKey?: string }).vlmApiKey || global.apiKey || '',
+    timeoutMs: Math.max((v.timeout ?? global.timeout ?? 8), 1) * 1000
   };
 }
 
-// 登录开关:被测系统需要登录吗(默认 true)。env TESTER_LOGIN=0 可临时关闭。
+// 登录开关:env TESTER_LOGIN > 当前环境 login > testerConfig.login > 默认 true
 export function loginEnabled(): boolean {
   if (process.env.TESTER_LOGIN !== undefined) return process.env.TESTER_LOGIN !== '0';
+  const e = envConfig();
+  if (e.login !== undefined) return e.login;
   const l = testerConfig().login?.enabled;
   return l !== undefined ? l : true;
 }

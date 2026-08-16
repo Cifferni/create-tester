@@ -79,6 +79,7 @@ async function main(opts: Options): Promise<void> {
   writePackageJson(target, name, browser, extras);
   setBrowser(target, browser);
   writeMcpJson(target);
+  writeEnvFiles(target);
 
   console.log(`[create-tester] 已创建测试项目:${target}`);
   console.log(`[create-tester] 主浏览器:${browser}${browser === 'chrome' ? '(系统 Chrome,免下载)' : ''}`);
@@ -139,8 +140,42 @@ function writeMcpJson(target: string): void {
   fs.writeFileSync(path.join(target, '.mcp.json'), JSON.stringify(mcp, null, 2) + '\n', 'utf8');
 }
 
-function copyTemplate(templateDir: string, target: string): void {
-  fs.cpSync(templateDir, target, { recursive: true });
+// 按 tester.config.ts 的 envs 表,为每个环境生成一份 .env.<环境> 文件(账号密码占位空,用户只填密码)。
+// 敏感文件,已 gitignore;生成占位即可,用户后续按需填。
+function writeEnvFiles(target: string): void {
+  const cfgFile = path.join(target, 'tester.config.ts');
+  if (!fs.existsSync(cfgFile)) return;
+  const text = fs.readFileSync(cfgFile, 'utf8');
+  const envNames: string[] = [];
+  // 粗解析 tester.config.ts 的 envs: { key: {...} } 里的 key(dev/test/uat/prod)
+  const block = text.match(/envs:\s*\{([\s\S]*?)\n\s*\},/);
+  if (block) {
+    for (const line of block[1].split('\n')) {
+      const m = line.match(/^\s{2,}([A-Za-z0-9_-]+)\s*:\s*\{/);
+      if (m) envNames.push(m[1]);
+    }
+  }
+  for (const env of envNames) {
+    const file = path.join(target, `.env.${env}`);
+    if (fs.existsSync(file)) continue; // 已有不覆盖
+    const content = [
+      `# ${env} 环境账号密码`,
+      `TESTER_USER=`,
+      `TESTER_PASSWORD=`,
+      '',
+      '# 其他账号(可选):TESTER_USER_<账号大写> / TESTER_PASSWORD_<账号大写>',
+      `# TESTER_USER_ADMIN=`,
+      `# TESTER_PASSWORD_ADMIN=`,
+      ''
+    ].join('\n');
+    fs.writeFileSync(file, content, 'utf8');
+  }
+  if (envNames.length) {
+    console.log(`[create-tester] 已按环境生成配置文件:${envNames.map((e) => `.env.${e}`).join(', ')}(填账号密码后即可自动登录)`);
+  }
+}
+
+function copyTemplate(templateDir: string, target: string): void {  fs.cpSync(templateDir, target, { recursive: true });
   // npm 打包会排除 .gitignore,发布包里用 _gitignore,创建项目时转回并清理
   const gitignore = path.join(target, '.gitignore');
   if (!fs.existsSync(gitignore)) {

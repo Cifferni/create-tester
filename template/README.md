@@ -46,7 +46,17 @@
 
 > 更省事:如果你的 AI 支持项目级 `.mcp.json`(opencode / Cursor 等),工程里已经配好了,直接打开本工程即可,不用粘贴。**只跑回归(`npm run test`)不需要 MCP。**
 
-**第 3 步:说第一句话**
+**第 3 步:告诉 AI 被测地址(和账号密码)**
+对 AI 说:
+
+> "被测地址是 http://xxx.xx"
+> (要登录,再补一句)"登录账号是 test01,密码是 123456"
+
+AI 会把地址写进 `tester.config.ts`、账号密码写进当前环境的 `.env.<环境>` 文件(如 `.env.test`,敏感信息不进仓库),再自动登录,**整轮只登一次**。登录要验证码/短信时,第一次跑一下 `npm run login`(弹出浏览器手动登一次),之后自动复用。
+
+> 不想开 AI、想自己动手改文件?直接看下面「配置被测地址和账号密码」的「方式二」。
+
+**第 4 步:说第一句话**
 对 AI 说:
 
 > "把 test-cases/登录.xlsx 转成测试用例跑一遍,失败的给我分析根因"
@@ -57,12 +67,41 @@ AI 会自动完成全流程,你只等结果:
 读用例 → 打开页面看结构 → 生成测试 → 跑测试 → 告诉你哪些过、哪些挂、为什么挂
 ```
 
-**第 4 步(要登录才需要):报账号**
-对 AI 说一句:
+---
 
+## 配置被测地址和账号密码(两种方式,任选其一)
+
+跑起来就靠两样东西:**被测地址**(打哪个页面)和**账号密码**(要登录时)。两种方式任选:
+
+### 方式一:告诉 AI(推荐,最简单)
+
+对着 AI 说两句就行,它会自己把地址写进 `tester.config.ts`、账号密码写进 `.env.<环境>`,你**不用碰任何文件**:
+
+> "被测地址是 http://xxx.xx"
 > "登录账号是 test01,密码是 123456"
 
-AI 记住后自动登录,**整轮只登一次**。登录要验证码/短信时,第一次跑一下 `npm run login`(弹出浏览器手动登一次),之后自动复用。
+### 方式二:自己改文件(不想开 AI 时)
+
+> 账号密码这类敏感信息都放在 `.env.<环境>` 文件里,已被 gitignore 排除,不会进仓库。
+
+**① 被测地址** — 打开 `tester.config.ts`,找到你要跑的环境(默认是 `test`),把 `baseURL` 改成你的地址:
+
+```ts
+envs: {
+  test: { baseURL: 'http://你的被测地址', browser: 'chromium', login: true, ... }
+}
+```
+
+**② 账号密码** — 打开当前环境的 `.env.<环境>` 文件(默认环境 `test` 就是 `.env.test`;**没有就新建一个同名文件**),填上账号密码:
+
+```
+TESTER_USER=你的账号
+TESTER_PASSWORD=你的密码
+```
+
+多个账号(如 `admin`)就追加 `TESTER_USER_ADMIN` / `TESTER_PASSWORD_ADMIN`,跑的时候设 `TESTER_ACCOUNT=admin` 切到它。
+
+改完直接跑(`npm run test`)即可,不用改代码。哪个环境对应哪个文件:`tester.config.ts` 里 `envs` 的表名 + `.env.` 前缀,如环境 `uat` 就是 `.env.uat`。
 
 ---
 
@@ -152,15 +191,19 @@ test-result/   所有输出:报告、截图、视频、登录态、缓存
 - **其他 AI**:把「快速开始·第 2 步」那段配置说明复制粘贴给 AI,让它按自己的方式接入(面板/命令/config 都行,本质就是那两个 stdio server)
 - 兜底:`node <工程>/mcp/server.cjs`(tester)+ `npx @playwright/mcp@latest --config <工程>/mcp/playwright-mcp.json`(playwright)
 
-**2. 配置** — 集中在 `tester.config.ts`(环境地址 / 功能开关 / 重试 / 视觉兜底,每项有白话注释)
-- 优先级:**环境变量 > tester.config.ts > 内置默认**
-- 关键环境变量:`BASE_URL`(被测地址)、`TESTER_ENV`(环境名)、`TESTER_BROWSER`(浏览器)、`TESTER_ACCOUNT`(多账号)
+**2. 配置** — 集中在 `tester.config.ts`,按环境分组(每个环境一段完整配置:地址/浏览器/登录/VLM,每项有白话注释)
+- 优先级:**环境变量 > 当前环境的配置(tester.config.ts) > 内置默认**
+- **每个环境一个 `.env.<环境>` 文件**(`.env.test` / `.env.uat` / `.env.prod` …),放该环境账号密码,已被 gitignore 排除(不进仓库)。脚手架创建工程时自动生成,你只填密码。
+  - 缺省账号:`TESTER_USER` / `TESTER_PASSWORD`
+  - 多账号:`TESTER_USER_<账号大写>` / `TESTER_PASSWORD_<账号大写>`(如 admin → `TESTER_USER_ADMIN`),跑时设 `TESTER_ACCOUNT=admin` 切换
+- 临时覆盖(不改文件):`BASE_URL` / `TESTER_ENV` / `TESTER_BROWSER` / `TESTER_LOGIN`
 
 **3. 多环境跑测试**
 ```bash
-tester run --env test            # 测试环境
+npm run test                   # 交互式:方向键选环境(回车用默认环境)
+tester run --env test          # 直接指定环境跑
 tester run --env uat --workers 4 # 预发环境 + 4 并行
-tester run --grep @smoke         # 只跑冒烟标签
+tester run --grep @smoke       # 只跑冒烟标签
 ```
 `--env` 的名字对应 `tester.config.ts` 里 `envs` 表;设了 `BASE_URL` 时以它为准。
 
@@ -169,17 +212,18 @@ tester run --grep @smoke         # 只跑冒烟标签
 npx create-tester@latest upgrade
 ```
 - **补齐新模板文件**(缺失才补):`tester.config.ts` / `plugin/vlm.example.cjs` / `ci.example.yml`
-- **绝不覆盖**:你改过的任何文件(`_login.ts`、`auth.setup.ts`、`playwright.config.ts`、specs、`env-reset.cjs` 等)原样保留
+- **绝不覆盖**:你改过的任何文件(`_login.ts`、`auth.setup.ts`、`playwright.config.ts`、specs、`env-reset.cjs`、`.env.<环境>` 等)原样保留
 - 升级后重启 AI 会话即可
 
 **4. CI / 定时回归**
 - `tester run` 退出码按结果(0=全通过,1=有失败),流水线直接判红
 - 模板自带 `ci.example.yml`(GitHub Actions 示例:装依赖 → 装浏览器 → 跑回归 → 传报告),复制为 `.github/workflows/regression.yml` 并配好 Secrets 即可;Jenkins 同理,核心就一句 `npx tester run --workers N`
+- CI 里环境变量直接用 Secrets 注入,不落盘
 
 **5. VLM 视觉兜底(可选,默认关)**
 语义定位(找元素)全失败时,把截图发给"能看图的模型"按坐标点,适合 Canvas / 封闭组件。启用 3 步:
-1. `tester.config.ts` → `vlm.enabled: true`
-2. 填 `model` / `apiUrl` / `apiKey`(或设环境变量 `TESTER_VLM_API_KEY`,避免 key 进仓库)
+1. `tester.config.ts` 对应环境的 `vlm.enabled: true`
+2. 填该环境 `vlm.model` / `vlm.apiUrl`;`apiKey` 用 `.env.<环境>` 的 `TESTER_VLM_API_KEY`(避免 key 进仓库)
 3. `plugin/` 放视觉插件(模板自带 `vlm.example.cjs`,复制改名 `vlm.cjs`)
 
 **6. 其他**

@@ -8,6 +8,10 @@
 const { spawn } = require('child_process');
 const path = require('path');
 const { pickItem, style, spinner } = require('./_menu.cjs');
+const { loadProjectEnv } = require('./_env.cjs');
+
+// 加载项目根目录的 .env 与当前环境的 .env.<环境名>(已设的环境变量优先)
+loadProjectEnv(process.cwd());
 
 const { cyan, dim, yellow, green, red } = style;
 
@@ -23,7 +27,10 @@ function loadTesterConfig() {
 }
 
 const cfg = loadTesterConfig();
-const ENVS = cfg.envs || {};
+// envs 值可以是对象(新格式:{baseURL,browser,login})或字符串地址(旧格式),统一取地址
+const ENVS = Object.fromEntries(
+  Object.entries(cfg.envs || {}).map(([k, v]) => [k, typeof v === 'string' ? v : (v && v.baseURL) || ''])
+);
 const DEFAULT_ENV = cfg.defaultEnv || Object.keys(ENVS)[0] || 'test';
 const envNames = Object.keys(ENVS);
 

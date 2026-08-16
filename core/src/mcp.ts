@@ -19,7 +19,7 @@ import { checkSpecQuality } from './checkSyntax';
 import { closeBrowser } from './browser';
 import { loadPlugins } from './plugins';
 import { playwrightConfig } from './config';
-import { effectiveTesterConfig, testerConfig as readTesterConfig, loginEnabled, autoResetEnabled, autoResetOnFailureOnly } from './config';
+import { effectiveTesterConfig, testerConfig as readTesterConfig, loginEnabled, autoResetEnabled, autoResetOnFailureOnly, browserName } from './config';
 import { parseCaseToDsl, dslToCode, dslToAssertions } from './dsl';
 import { startPlaywrightTest, runPlaywrightTest, runWithRetry, summarizeJsonReport, failedSpecFiles } from './playwright';
 import { locatorCacheStats } from './selectorCache';
@@ -517,16 +517,26 @@ function runMCP(): void {
       const { baseURL } = playwrightConfig();
       const envs = Object.entries(t.envs || {});
       const retry = t.retry || {};
+      const envDesc = (v: unknown): string => {
+        if (typeof v === 'string') return v; // 旧格式:地址字符串
+        const o = v as { baseURL?: string; browser?: string; login?: boolean };
+        const parts = [o.baseURL || ''];
+        if (o.browser) parts.push(`浏览器:${o.browser}`);
+        if (o.login !== undefined) parts.push(`登录:${o.login ? '要' : '不要'}`);
+        return parts.filter(Boolean).join(' | ');
+      };
       return textResult(
         [
-          '当前 tester 配置(环境变量 > playwright.config.ts testerConfig > 默认):',
-          `  被测地址:${baseURL}(BASE_URL / envs表 / use.baseURL)`,
+          '当前 tester 配置(环境变量 > 当前环境配置 > testerConfig 全局 > 默认):',
+          `  当前环境:${eff.currentEnv}(${envDesc(eff.envResolved)})`,
+          `  被测地址:${baseURL}(BASE_URL / 当前环境 baseURL / 兜底)`,
+          `  浏览器:${browserName()}(TESTER_BROWSER / 当前环境 browser / 全局 browser)`,
           `  开关-选择器缓存:${eff.switchesResolved.locatorCache ? '开' : '关'}(TESTER_LOCATOR_CACHE 可覆盖)`,
           `  开关-变量落盘:${eff.switchesResolved.vars ? '开' : '关'}(TESTER_VARS 可覆盖)`,
           `  重试:${retry.maxRounds ?? 2} 轮,分类:${(retry.retryable || ['定位', '网络', '超时']).join('/')}`,
-          `  登录:${loginEnabled() ? '需要(走 auth.setup)' : '不需要(跳过登录,直接测)'}(TESTER_LOGIN=0 可关)`,
+          `  登录:${loginEnabled() ? '需要(走 auth.setup)' : '不需要(跳过登录,直接测)'}(当前环境 login / TESTER_LOGIN 可覆盖)`,
           `  VLM 视觉降级:${eff.vlmResolved ? '开' : '关'}(配 plugin/ 的 locatorVlm 插件后可开)`,
-          envs.length ? `  多环境:${envs.map(([k, v]) => `${k}=${v}`).join(', ')}` : '  多环境:(未配置)'
+          envs.length ? `  多环境:\n${envs.map(([k, v]) => `    ${k}  ${envDesc(v)}`).join('\n')}` : '  多环境:(未配置)'
         ].join('\n')
       );
     }

@@ -10,6 +10,10 @@ const { spawn } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 const { pickItem, style, spinner, inputText } = require('./_menu.cjs');
+const { loadProjectEnv, loadEnvFile } = require('./_env.cjs');
+
+// 加载项目根目录的 .env 与当前环境的 .env.<环境名>(已设的环境变量优先)
+loadProjectEnv(process.cwd());
 
 const { dim, cyan, yellow, green, red } = style;
 
@@ -24,24 +28,34 @@ function loadTesterConfig() {
   }
 }
 
-// ── 读 tests/_login.ts 的 TEST_ACCOUNTS 表(已有账号),失败时回退只有 default ──
-function loadTestAccounts() {
-  try {
-    const jiti = require('jiti')(__filename, { interopDefault: true });
-    const mod = jiti(path.join(process.cwd(), 'tests', '_login.ts'));
-    const accounts = mod && (mod.TEST_ACCOUNTS || (mod.default && mod.default.TEST_ACCOUNTS));
-    if (accounts && typeof accounts === 'object') return accounts;
-  } catch {
-    // 读取失败则用默认
+// ── 从 .env.<环境> 读账号列表:缺省账号 + TESTER_USER_<大写> 形式的多账号 ──
+// 返回账号名数组(至少含 default)
+function loadAccountNames() {
+  const names = ['default'];
+  for (const key of Object.keys(process.env)) {
+    const m = /^TESTER_USER_([A-Z0-9_]+)$/.exec(key);
+    if (m) names.push(m[1].toLowerCase());
   }
-  return { default: { user: '', password: '' } };
+  // 去重保序
+  return [...new Set(names)];
 }
 
 const cfg = loadTesterConfig();
-const ENVS = cfg.envs || {};
+// envs 值可以是对象(新格式:{baseURL,browser,login})或字符串地址(旧格式),统一取地址
+const ENVS = Object.fromEntries(
+  Object.entries(cfg.envs || {}).map(([k, v]) => [k, typeof v === 'string' ? v : (v && v.baseURL) || ''])
+);
 const DEFAULT_ENV = cfg.defaultEnv || Object.keys(ENVS)[0] || 'test';
 const envNames = Object.keys(ENVS);
-const LOGIN = process.env.TESTER_LOGIN !== '0' && (cfg.login?.enabled ?? true);
+const ENV = process.env.TESTER_ENV || '';
+// 当前环境的 login:env TESTER_LOGIN > 当前环境 login > 全局 login > 默认 true
+function currentLogin() {
+  if (process.env.TESTER_LOGIN !== undefined) return process.env.TESTER_LOGIN !== '0';
+  const raw = cfg.envs?.[ENV || DEFAULT_ENV];
+  if (raw && typeof raw === 'object' && raw.login !== undefined) return raw.login;
+  return cfg.login?.enabled ?? true;
+}
+const LOGIN = currentLogin();
 
 if (!LOGIN) {
   console.log('');
@@ -81,10 +95,9 @@ function pickEnv() {
   });
 }
 
-// ── 交互式选择/新建账号:列出已有账号 + 「输入新账号」选项 ──
+// ── 交互式选择/新建账号:列出 .env.<环境> 里的账号 + 「输入新账号」选项 ──
 async function pickAccount(envName) {
-  const accounts = loadTestAccounts();
-  const existing = Object.keys(accounts);
+  const existing = loadAccountNames();
   const NEW_ACCOUNT = '(输入新账号名...)';
   const options = [...existing, NEW_ACCOUNT];
   const defaultKey = process.env.TESTER_ACCOUNT && existing.includes(process.env.TESTER_ACCOUNT)
@@ -104,39 +117,21 @@ async function pickAccount(envName) {
   if (choice !== NEW_ACCOUNT) return choice;
 
   // 输入新账号名
-  const name = await inputText('请输入新账号名(如 admin / 张三,仅用作登录态文件区分):', 'admin');
+  const name = await inputText('请输入新账号名(如 admin,仅用作登录态文件区分):', 'admin');
   if (!name) {
     console.log(dim('未输入账号名,取消。'));
     process.exit(0);
   }
-  // 把新账号写回 tests/_login.ts 的 TEST_ACCOUNTS(自动建入口,以后测试/登录都可用)
-  const loginFile = path.join(process.cwd(), 'tests', '_login.ts');
-  try {
-    let src = fs.readFileSync(loginFile, 'utf8');
-    // 只检测真正的账号定义(带缩进+冒号),排除注释里的示例
-    const accountDef = new RegExp(`^  ${name}:\\s*\\{`, 'm');
-    if (!accountDef.test(src)) {
-      // 在 TEST_ACCOUNTS 里插入新账号:先找 "default: {" 定位块起点,再在块结束的 "};" 前插入
-      const blockStart = src.indexOf('default: {');
-      if (blockStart >= 0) {
-        const closeIdx = src.indexOf('};', blockStart);
-        if (closeIdx >= 0) {
-          const lastLineEnd = src.lastIndexOf('\n', closeIdx);
-          src = src.slice(0, lastLineEnd + 1) + `  ${name}: { user: '', password: '' },  // 由 npm run login 自动添加\n` + src.slice(lastLineEnd + 1);
-          fs.writeFileSync(loginFile, src, 'utf8');
-          console.log(green(`  ✓ 已把账号「${name}」写入 tests/_login.ts(账号密码留空,人工登录时在浏览器里填)。`));
-        } else {
-          console.log(dim('  (未找到 TEST_ACCOUNTS 结束位置,账号「' + name + '」仅用于本次登录态文件命名)'));
-        }
-      } else {
-        console.log(dim('  (未找到 TEST_ACCOUNTS,账号「' + name + '」仅用于本次登录态文件命名)'));
-      }
-    } else {
-      console.log(dim(`  (账号「${name}」已存在于 tests/_login.ts,无需重复添加)`));
-    }
-  } catch (e) {
-    console.log(dim(`  (未自动写入 _login.ts:${e.message})`));
-  }
+  // 提示在 .env.<环境> 里配该账号的密码(TESTER_USER_<大写>/TESTER_PASSWORD_<大写>),自动登录时才用
+  const suffix = name === 'default' ? '' : `_${name.toUpperCase()}`;
+  const envFile = `.env.${envName}`;
+  console.log('');
+  console.log(green(`  ✓ 已选账号「${name}」。`));
+  console.log(dim(`    如需自动登录,请把该账号密码加到 ${envFile} 文件:`));
+  console.log(dim(`      TESTER_USER${suffix}=你的用户名`));
+  console.log(dim(`      TESTER_PASSWORD${suffix}=你的密码`));
+  console.log(dim('    本次人工登录直接浏览器里填,不需要这些。'));
+  console.log('');
   return name;
 }
 
