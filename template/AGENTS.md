@@ -42,7 +42,6 @@
 - 探查用 `browser_snapshot`/`browser_find`(大页面先对容器 target 精准看),禁止临时 spec。
 - 改完 `tester_retry_failed` 单点;先探查再改,别反复跑试错。
 - 选择性执行:`tag` + `tester_run_tests {grep:'@smoke'}` 或 `npm run test -- --grep @smoke`。
-- 切环境跑:默认跑 tester.config.ts 里 `envs[defaultEnv]`(缺省 test);用户说"预发环境/生产环境"等非默认环境时,才传 `tester_run_tests {env:'uat'}` / `{env:'prod'}`。显式 BASE_URL 优先于一切。
 - 环境:先构造(`tester_env_reset`/清理),构造不了才 `test.skip`+说明;环境限制不算 bug,skip 即可。
 - 看结果可选 `tester view`(只读 Web 面板)。
 
