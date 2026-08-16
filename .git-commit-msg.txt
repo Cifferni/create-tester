@@ -1,0 +1,1 @@
+docs: AGENTS.md 切环境话术对齐 defaultEnv 根治行为——默认跑 envs[defaultEnv],仅切非默认环境才传 env
