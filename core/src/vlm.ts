@@ -45,25 +45,53 @@ function selectorFromPoint({ x, y }: { x: number; y: number }): string | null {
 }
 
 // 调 VLM 插件定位目标,成功后返回反哺缓存用的选择器;无法定位返回 null
+// 隔离原则:插件超时/抛错都只记日志、跳过该插件,绝不阻塞整条测试链路。
 export async function resolveVlm(page: Page, target: string): Promise<VlmResolveResult | null> {
   const cfg = vlmConfig();
   if (!cfg.enabled) return null; // 开关没开,不降级
   if (!cfg.apiUrl || !cfg.apiKey) return null; // 没填模型地址/key,无法调
   for (const plugin of getVlmPlugins()) {
+    const pluginName = plugin.name || '(未命名)';
     try {
-      const result = await plugin.locateVlm?.(page, target, cfg);
+      // 超时保护:第三方插件卡死(网络挂/模型无响应)时到点放弃,不等它拖垮用例
+      const result = await withTimeout(
+        plugin.locateVlm?.(page, target, cfg),
+        cfg.timeoutMs,
+        `[vlm] 插件 ${pluginName} 定位超时(>${cfg.timeoutMs / 1000}s),已跳过`
+      );
       if (!result) continue;
       const selector = await page.evaluate(selectorFromPoint, { x: result.x, y: result.y });
       if (!selector) continue; // 坐标没落到元素上,跳过该插件
-      // onVlmHit 可自定义反哺选择器;未实现就用坐标推导的
-      const custom = await plugin.onVlmHit?.(page, target, result).catch(() => null);
+      // onVlmHit 可自定义反哺选择器;未实现就用坐标推导的(同样有超时保护)
+      const custom = await withTimeout(
+        plugin.onVlmHit?.(page, target, result),
+        cfg.timeoutMs,
+        `[vlm] 插件 ${pluginName} onVlmHit 超时(>${cfg.timeoutMs / 1000}s),用坐标推导选择器`
+      );
       return { selector: custom || selector, plugin: plugin.name, x: result.x, y: result.y };
-    } catch {
-      // 单个 VLM 插件失败,继续尝试下一个
+    } catch (e) {
+      // 单个 VLM 插件失败(抛错或超时),记录后继续尝试下一个,不影响测试
+      console.error(`[vlm] 插件 ${pluginName} 调用失败已跳过:${(e as Error).message}`);
       continue;
     }
   }
   return null;
+}
+
+// 给 Promise 加超时:超时抛错(由调用方 catch 隔离);返回 null 的 promise 视为"立即失败"
+async function withTimeout<T>(p: Promise<T> | undefined, ms: number, timeoutMsg: string): Promise<T> {
+  if (p === undefined) return Promise.resolve(undefined as T);
+  let timer: NodeJS.Timeout | undefined;
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new Error(timeoutMsg)), ms);
+      })
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
 }
 
 // 重置已缓存的 VLM 插件列表(测试间如需刷新)

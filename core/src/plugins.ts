@@ -28,12 +28,13 @@ export interface TesterPlugin {
   /**
    * VLM 视觉定位:给定页面截图与目标描述,返回元素坐标。
    * 返回 null 表示无法定位(兜底失败,仍走自愈报错)。
-   * 第三个参数是 tester.config.ts 里 vlm 段的配置(模型名/API 地址/key),插件直接用它调模型。
+   * 第三个参数是 tester.config.ts 里 vlm 段的配置(模型名/API 地址/key/超时毫秒),插件直接用它调模型。
+   * 注意:插件实现必须自己处理网络错误/超时,返回 null 即可;内核也有兜底超时,不会无限等。
    */
   locateVlm?(
     page: import('@playwright/test').Page,
     target: string,
-    cfg: { enabled: boolean; model: string; apiUrl: string; apiKey: string }
+    cfg: { enabled: boolean; model: string; apiUrl: string; apiKey: string; timeoutMs: number }
   ): Promise<VlmLocateResult | null>;
   /** VLM 降级成功后的回调:可反向沉淀选择器缓存(见 selfHeal 与 selectorCache 打通) */
   onVlmHit?(page: import('@playwright/test').Page, target: string, result: VlmLocateResult): Promise<string | null>;

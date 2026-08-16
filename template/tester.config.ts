@@ -75,6 +75,7 @@ export const testerConfig = {
     enabled: false, // true = 允许视觉兜底
     model: 'glm-4v', // 你用的视觉模型名字(按你接入的服务填,如 glm-4v / qwen-vl-max / gpt-4o)
     apiUrl: 'https://你的模型服务地址/v1/chat/completions', // 视觉模型服务的 API 地址(换成真实的)
-    apiKey: '' // 你的 API key(推荐不填这里,改用环境变量 TESTER_VLM_API_KEY)
+    apiKey: '', // 你的 API key(推荐不填这里,改用环境变量 TESTER_VLM_API_KEY)
+    timeout: 8 // 单次视觉定位最多等 8 秒,超时就放弃、不拖慢测试(卡死时调小,慢模型调大)
   }
 };

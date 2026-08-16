@@ -38,6 +38,8 @@ export interface TesterConfig {
     apiUrl?: string;
     /** API key(也可用环境变量 TESTER_VLM_API_KEY,env 优先级更高,避免写死在仓库) */
     apiKey?: string;
+    /** 单次视觉定位超时秒数,默认 8(超时即放弃,不阻塞测试链路) */
+    timeout?: number;
   };
 }
 
@@ -109,12 +111,13 @@ export function effectiveTesterConfig(): TesterConfig & { switchesResolved: { lo
 }
 
 // VLM 配置解析:env(TESTER_VLM_API_KEY) > testerConfig.vlm
-export function vlmConfig(): { enabled: boolean; model: string; apiUrl: string; apiKey: string } {
+export function vlmConfig(): { enabled: boolean; model: string; apiUrl: string; apiKey: string; timeoutMs: number } {
   const v = testerConfig().vlm ?? {};
   return {
     enabled: v.enabled ?? false,
     model: v.model || '',
     apiUrl: v.apiUrl || '',
-    apiKey: process.env.TESTER_VLM_API_KEY || v.apiKey || ''
+    apiKey: process.env.TESTER_VLM_API_KEY || v.apiKey || '',
+    timeoutMs: Math.max((v.timeout ?? 8), 1) * 1000
   };
 }

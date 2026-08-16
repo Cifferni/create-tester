@@ -13,24 +13,32 @@ async function locateVlm(page, target, cfg) {
   const buf = await page.screenshot({ type: 'png' });
   const base64 = buf.toString('base64');
   // 2) 发给视觉模型,让它返回目标坐标
-  const res = await fetch(cfg.apiUrl, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
-    body: JSON.stringify({
-      model: cfg.model,
-      messages: [
-        {
-          role: 'user',
-          content: [
-            { type: 'text', text: `请在这张页面截图里找到"${target}",返回它在图片中的像素坐标,格式严格为 JSON:{"x":数字,"y":数字}` },
-            { type: 'image_url', image_url: { url: `data:image/png;base64,${base64}` } }
-          ]
-        }
-      ],
-      temperature: 0
-    })
-  });
-  if (!res.ok) return null;
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), cfg.timeoutMs); // 插件自己也限时,配合内核兜底
+  let res;
+  try {
+    res = await fetch(cfg.apiUrl, {
+      method: 'POST',
+      signal: ctrl.signal,
+      headers: { 'content-type': 'application/json', Authorization: `Bearer ${cfg.apiKey}` },
+      body: JSON.stringify({
+        model: cfg.model,
+        messages: [
+          {
+            role: 'user',
+            content: [
+              { type: 'text', text: `请在这张页面截图里找到"${target}",返回它在图片中的像素坐标,格式严格为 JSON:{"x":数字,"y":数字}` },
+              { type: 'image_url', image_url: { url: `data:image/png;base64,${base64}` } }
+            ]
+          }
+        ],
+        temperature: 0
+      })
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+  if (!res || !res.ok) return null;
   const data = await res.json();
   const text = data?.choices?.[0]?.message?.content || '';
   // 3) 从模型回答里抠出 {x, y}
