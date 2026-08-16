@@ -1,1 +1,5 @@
-chore: bump 0.7.3——README/template README 升级章节加「补齐/不覆盖」行为说明表
+feat: upgrade 补齐清单显示到总结输出;顺带修 --no-install 分支(commander 解析)真正生效
+
+- 补齐清单:fillMissingTemplateFiles 返回补齐文件列表,总结统一打印(有则列出,无则"无需补齐")
+- 修 bug:--no-install 之前没生效(仍跑 npm install),改用 opts.install===false || argv 判断
+- 验证:缺文件工程 upgrade --no-install → 补齐清单显示、不跑 npm install
