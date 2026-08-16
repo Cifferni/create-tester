@@ -1,10 +1,7 @@
 {
   "browser": {
     "browserName": "chromium",
-    "isolated": true,
-    "contextOptions": {
-      "storageState": "test-result/auth.json"
-    }
+    "isolated": true
   },
   "capabilities": [
     "core",

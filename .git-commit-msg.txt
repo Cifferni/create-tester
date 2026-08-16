@@ -1,5 +1,6 @@
-feat: upgrade 补齐清单显示到总结输出;顺带修 --no-install 分支(commander 解析)真正生效
+fix: 移除 playwright-mcp.json 错误的 storageState 预加载——MCP 浏览器以无登录态启动,不再因 auth.json 缺失报 ENOENT
 
-- 补齐清单:fillMissingTemplateFiles 返回补齐文件列表,总结统一打印(有则列出,无则"无需补齐")
-- 修 bug:--no-install 之前没生效(仍跑 npm install),改用 opts.install===false || argv 判断
-- 验证:缺文件工程 upgrade --no-install → 补齐清单显示、不跑 npm install
+- 根因: playwright-mcp.json 配死 storageState: "test-result/auth.json",但登录态文件实际是 auth-<account>.json,且首次未登录时文件根本不存在,导致 browser_navigate 报 ENOENT
+- 修复: 模板移除 contextOptions.storageState,MCP 浏览器无登录态启动,登录由 ensureLoggedIn(spec 内)/tester_login(人工)负责;npm run test 的登录态走 Playwright 自己的 auth.setup storageState,不受影响
+- upgrade: 检测旧版含 storageState: auth.json 的 playwright-mcp.json 自动修复(用户自定义过的不动)
+- 验证: 老工程 upgrade → 自动修复该文件
