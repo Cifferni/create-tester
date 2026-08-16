@@ -598,7 +598,8 @@ function runMCP(): void {
       const asserts = dslToAssertions(dsl).split('\n');
       const opBody = ops.length ? ops.join('\n') : `  // ⚠ 未识别到"操作"步骤,请用 browser_snapshot 看结构后补操作`;
       const assertBody = asserts.join('\n');
-      const skeleton = `import { test, expect } from '@playwright/test';
+      const skeleton = `// @tester-generated
+import { test, expect } from '@playwright/test';
 import { apiRecorder, expectApi, waitForVisible, waitForClickable, waitForText, waitForURL, selfHeal, mockRoute, tamperResponse, extractField, setVar, getVar, installPageGuard, waitMaskGone } from '@create-tester/core';
 
 // 用例来源: ${caseRef}

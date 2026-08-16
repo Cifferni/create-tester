@@ -3,11 +3,11 @@
 ## 核心纪律(硬性,先过一遍)
 
 1. 页面操作用**官方 playwright MCP**(`browser_*`),跑测试/管用例用**tester MCP**。禁止裸 Playwright 脚本、临时 spec、抓前端源码(`/src/**`)。
-2. 每个用例**必须有业务断言**,禁止只点不验;断言依据=用例文档"预期",不是页面现状(不符就报告,不改断言迁就)。
+2. 每个用例**必须有业务断言**,禁止只点不验;断言依据=用例文档"预期",不是页面现状(不符就报告,不改断言迁就)。**无断言的 test 块会被纪律预检代码拦截,无需自觉遵守。**
 3. **禁止 `waitForTimeout`/终端 sleep**:要等就用 `waitForVisible/Clickable/Text/URL`;等测试结果用 `tester_run_and_wait`(同步+自动重试)或 `tester_wait_result`。**这些违规会被 tester_run_tests 的纪律预检代码拦截,无需自觉遵守。**
 4. 定位优先级:`getByTestId` > `getByRole+name` > CSS/class > `getByText`(仅兜底且唯一)。
 5. 快照 ref 过期即失效:操作报 "Ref not found" 一律**先重新 `browser_snapshot`**,再基于新 ref 操作,别拿旧 ref 硬试。
-6. 禁止 `browser_run_code_unsafe` 手写复杂 CSS(如 `svg path[d^=...]` 脆选择器):定位用 `browser_snapshot`/`browser_find` 拿 ref 或可访问名。
+6. 禁止 `browser_run_code_unsafe` 手写复杂 CSS(如 `svg path[d^=...]`、`nth-child`、依赖 UI 库 class 等脆选择器):定位用 `browser_snapshot`/`browser_find` 拿 ref 或可访问名。**脆选择器会被纪律预检代码警告。**
 
 ## 工具(两套 MCP)
 
