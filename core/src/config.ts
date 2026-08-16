@@ -19,10 +19,24 @@ export interface EnvConfig {
   browser?: BrowserName;
   /** 该环境是否需要登录,缺省用全局 login.enabled */
   login?: boolean;
+  /** 该环境的 VLM 视觉兜底配置(enabled/model/apiUrl/timeout);apiKey 走 .env.<环境> 的 TESTER_VLM_API_KEY */
+  vlm?: EnvVlmConfig;
+}
+
+/** 单个环境的 VLM 配置(apiKey 不在这里,走 .env.<环境> 的 TESTER_VLM_API_KEY,避免进 git) */
+export interface EnvVlmConfig {
+  /** 是否启用视觉降级(默认 false,配了 plugin 后自动生效) */
+  enabled?: boolean;
+  /** 视觉模型名(如 glm-4v / qwen-vl-max / gpt-4o),传给模型服务的标识 */
+  model?: string;
+  /** 视觉模型服务 API 地址(兼容 OpenAI 风格接口) */
+  apiUrl?: string;
+  /** 单次视觉定位超时秒数,默认 8(超时即放弃,不阻塞测试链路) */
+  timeout?: number;
 }
 
 export interface TesterConfig {
-  /** 多环境配置表:每个环境一段完整配置(地址/浏览器/登录)。兼容旧格式:值可以是字符串地址 */
+  /** 多环境配置表:每个环境一段完整配置(地址/浏览器/登录/VLM)。兼容旧格式:值可以是字符串地址 */
   envs?: Record<string, EnvConfig | string>;
   /** 默认环境名:未传 TESTER_ENV 时用该环境的配置,缺省 'test' */
   defaultEnv?: string;
@@ -42,7 +56,7 @@ export interface TesterConfig {
     /** 哪些失败分类可自动重试(缺省 定位/网络/超时) */
     retryable?: FailureCategory[];
   };
-  /** VLM 视觉降级兜底(可选,向后兼容;新项目请直接配 .env.<环境> 的 TESTER_VLM_* 变量) */
+  /** VLM 视觉降级兜底(全局;apiKey 走 .env.<环境> 的 TESTER_VLM_API_KEY) */
   vlm?: {
     /** 是否启用视觉降级(默认 false,配了 plugin 后自动生效) */
     enabled?: boolean;
@@ -165,23 +179,18 @@ export function effectiveTesterConfig(): TesterConfig & {
   };
 }
 
-// VLM 配置解析:全部来自 .env.<环境> 的 TESTER_VLM_* 变量(enabled/model/apiUrl/apiKey/timeout),
-// 与账号密码一起放在当前环境的 env 文件里,不进仓库。未配时回退全局 testerConfig.vlm(向后兼容)。
-//   TESTER_VLM_ENABLED  是否启用(0/1)
-//   TESTER_VLM_MODEL    视觉模型名(如 glm-4v / qwen-vl-max / gpt-4o)
-//   TESTER_VLM_API_URL  视觉模型服务 API 地址(OpenAI 风格)
-//   TESTER_VLM_API_KEY  API key
-//   TESTER_VLM_TIMEOUT  单次定位超时秒数(默认 8)
+// VLM 配置解析:enabled/model/apiUrl/timeout 从 tester.config.ts 读(当前环境 envs[x].vlm > 全局 testerConfig.vlm);
+// apiKey 只走 .env.<环境> 的 TESTER_VLM_API_KEY,不进 tester.config.ts、不进 git。
 export function vlmConfig(): { enabled: boolean; model: string; apiUrl: string; apiKey: string; timeoutMs: number } {
+  const cur = envConfig().vlm;
   const global = testerConfig().vlm ?? {};
-  const parseBool = (s: string | undefined): boolean | undefined => (s === undefined ? undefined : s !== '0');
-  const parseNum = (s: string | undefined): number | undefined => (s === undefined ? undefined : Number(s));
+  const v = cur ?? global;
   return {
-    enabled: parseBool(process.env.TESTER_VLM_ENABLED) ?? global.enabled ?? false,
-    model: process.env.TESTER_VLM_MODEL || global.model || '',
-    apiUrl: process.env.TESTER_VLM_API_URL || global.apiUrl || '',
+    enabled: v.enabled ?? false,
+    model: v.model || global.model || '',
+    apiUrl: v.apiUrl || global.apiUrl || '',
     apiKey: process.env.TESTER_VLM_API_KEY || global.apiKey || '',
-    timeoutMs: Math.max(parseNum(process.env.TESTER_VLM_TIMEOUT) ?? global.timeout ?? 8, 1) * 1000
+    timeoutMs: Math.max((v.timeout ?? global.timeout ?? 8), 1) * 1000
   };
 }
 

@@ -167,12 +167,8 @@ function writeEnvFiles(target: string): void {
       `# TESTER_USER_ADMIN=`,
       `# TESTER_PASSWORD_ADMIN=`,
       '',
-      '# VLM 视觉兜底(可选,默认关):想用再填,见 README「给维护者·5」',
-      `TESTER_VLM_ENABLED=0`,
-      `TESTER_VLM_MODEL=`,
-      `TESTER_VLM_API_URL=`,
+      '# VLM 视觉兜底(可选,默认关):只需填 API key;开关/模型/地址/超时在 tester.config.ts 的环境 vlm 块配',
       `TESTER_VLM_API_KEY=`,
-      `TESTER_VLM_TIMEOUT=8`,
       ''
     ].join('\n');
     fs.writeFileSync(file, content, 'utf8');
