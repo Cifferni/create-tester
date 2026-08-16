@@ -48,6 +48,13 @@ export interface TesterConfig {
     /** 是否需要登录(默认 true) */
     enabled?: boolean;
   };
+  /** 测试后自动恢复数据:每轮测试结束后自动执行 mcp/env-reset.cjs 清理/还原被测数据 */
+  autoReset?: {
+    /** 是否启用自动恢复(默认 false) */
+    enabled?: boolean;
+    /** 只在有失败时恢复(true 节省时间;false 不管成败都恢复,保证环境恒净) */
+    onFailureOnly?: boolean;
+  };
 }
 
 function configFile(): string {
@@ -134,4 +141,17 @@ export function loginEnabled(): boolean {
   if (process.env.TESTER_LOGIN !== undefined) return process.env.TESTER_LOGIN !== '0';
   const l = testerConfig().login?.enabled;
   return l !== undefined ? l : true;
+}
+
+// 测试后自动恢复数据:env TESTER_AUTO_RESET=0 关闭 / =1 打开(默认关)
+export function autoResetEnabled(): boolean {
+  if (process.env.TESTER_AUTO_RESET !== undefined) return process.env.TESTER_AUTO_RESET !== '0';
+  const a = testerConfig().autoReset?.enabled;
+  return a !== undefined ? a : false;
+}
+
+// 自动恢复是否只在失败时触发(默认 false=不管成败都恢复)
+export function autoResetOnFailureOnly(): boolean {
+  const a = testerConfig().autoReset?.onFailureOnly;
+  return a !== undefined ? a : false;
 }

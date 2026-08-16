@@ -19,7 +19,7 @@ import { checkSpecQuality } from './checkSyntax';
 import { closeBrowser } from './browser';
 import { loadPlugins } from './plugins';
 import { playwrightConfig } from './config';
-import { effectiveTesterConfig, testerConfig as readTesterConfig, loginEnabled } from './config';
+import { effectiveTesterConfig, testerConfig as readTesterConfig, loginEnabled, autoResetEnabled, autoResetOnFailureOnly } from './config';
 import { parseCaseToDsl, dslToCode, dslToAssertions } from './dsl';
 import { startPlaywrightTest, runPlaywrightTest, runWithRetry, summarizeJsonReport, failedSpecFiles } from './playwright';
 import { locatorCacheStats } from './selectorCache';
@@ -65,6 +65,45 @@ function listFiles(dir: string, exts: RegExp): string[] {
 
 function textResult(text: string) {
   return { content: [{ type: 'text' as const, text }] };
+}
+
+// 执行工程的环境清理脚本 mcp/env-reset.cjs(手动 tester_env_reset 与自动 autoReset 共用)
+function runEnvReset(): Promise<{ code: number | null; output: string }> {
+  return new Promise((resolve) => {
+    const script = path.join(projectRoot(), 'mcp', 'env-reset.cjs');
+    if (!fs.existsSync(script)) {
+      resolve({ code: null, output: '' });
+      return;
+    }
+    const childEnv = { ...process.env, NODE_NO_WINDOW: '1' };
+    const child = spawn(process.execPath, [script], { cwd: projectRoot(), env: childEnv, stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
+    let out = '';
+    let err = '';
+    child.stdout.on('data', (d) => (out += d));
+    child.stderr.on('data', (d) => (err += d));
+    child.on('close', (code) => resolve({ code: code ?? 1, output: [out, err].filter(Boolean).join('\n').trim() }));
+  });
+}
+
+// 报告读取后按 autoReset 配置自动执行 env-reset。onFailureOnly 时只恢复失败轮;
+// 用 pendingReset 标记避免同一轮报告被轮询多次时重复执行。
+let pendingAutoReset = true;
+
+// 新一轮测试开始前调用:清掉"待恢复"标记,让本轮报告生成后能再触发一次
+function armAutoReset(): void {
+  pendingAutoReset = true;
+}
+
+async function maybeAutoReset(summary: { failed: number }): Promise<void> {
+  if (!autoResetEnabled() || !pendingAutoReset) return;
+  if (autoResetOnFailureOnly() && summary.failed === 0) return;
+  pendingAutoReset = false;
+  try {
+    const { code, output } = await runEnvReset();
+    console.error(`[autoReset] env-reset 退出码 ${code ?? '?'}${output ? '\n' + output : ''}`);
+  } catch (e) {
+    console.error(`[autoReset] 执行失败:${(e as Error).message}`);
+  }
 }
 
 // 目录/文件名安全化:去掉 Windows 不允许的字符,防路径穿越
@@ -154,17 +193,9 @@ function runMCP(): void {
     () => {
       const script = path.join(projectRoot(), 'mcp', 'env-reset.cjs');
       if (!fs.existsSync(script)) return textResult(`未找到 ${script}(可让 AI 按被测应用写环境清理)`);
-      const child = spawn(process.execPath, [script], { cwd: projectRoot(), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true });
-      let out = '';
-      let err = '';
-      child.stdout.on('data', (d) => (out += d));
-      child.stderr.on('data', (d) => (err += d));
-      return new Promise((resolve) => {
-        child.on('close', (code) => {
-          const body = [out, err].filter(Boolean).join('\n').trim();
-          resolve(textResult(`env_reset 退出码 ${code ?? 1}\n${body || '(无输出)'}`));
-        });
-      });
+      return runEnvReset().then(({ code, output }) =>
+        textResult(`env_reset 退出码 ${code ?? 1}\n${output || '(无输出)'}`)
+      );
     }
   );
 
@@ -179,10 +210,11 @@ function runMCP(): void {
       const { baseURL } = playwrightConfig();
       fs.mkdirSync(path.join(root, 'test-result'), { recursive: true });
       // detached + windowsHide:不阻塞 MCP 请求、不弹终端窗口;浏览器窗口会正常打开
+      // NODE_NO_WINDOW:npx 内部再 spawn 的进程也不会闪控制台
       const child = spawn(
         'npx',
         ['playwright', 'codegen', baseURL, `--save-storage=test-result/${authFileName()}`],
-        { cwd: root, detached: true, stdio: 'ignore', windowsHide: true, shell: true }
+        { cwd: root, detached: true, stdio: 'ignore', windowsHide: true, shell: true, env: { ...process.env, NODE_NO_WINDOW: '1' } }
       );
       child.unref();
       return textResult(`已在后台打开浏览器:${baseURL}\n请测试人员在浏览器里完成登录(输验证码/短信),然后关掉浏览器。\n之后用 tester_login_status 确认登录态已保存。`);
@@ -243,6 +275,8 @@ function runMCP(): void {
       }
       // 跑测前清空上一轮残留变量,避免污染本次(跨用例传参从干净状态开始)
       resetVars();
+      // 新一轮开始:允许本轮报告生成后触发 autoReset
+      armAutoReset();
       // 清掉旧报告:让 tester_status/tester_failures 的"未找到报告"能区分"还在跑"
       try {
         fs.rmSync(path.join(root, 'test-result', 'test-results.json'), { force: true });
@@ -284,6 +318,7 @@ function runMCP(): void {
         return textResult(`以下 spec 存在问题,已停止运行:\n\n${fatalIssues.join('\n\n')}`);
       }
       resetVars();
+      armAutoReset();
       try {
         fs.rmSync(path.join(root, 'test-result', 'test-results.json'), { force: true });
       } catch {}
@@ -353,6 +388,8 @@ function runMCP(): void {
       if (!fs.existsSync(report)) return textResult(`未找到报告:${report}(测试可能仍在运行,稍后再查)`);
       const s = summarizeJsonReport(fs.readFileSync(report, 'utf8'));
       if (!s) return textResult('报告解析失败');
+      // 自动恢复:按 autoReset 配置执行 env-reset(不阻塞结果返回)
+      void maybeAutoReset(s);
       // 报告器插件:每轮结束触发(通知/归档等),失败也不阻塞结果返回
       for (const p of plugins.reporters) {
         try {
@@ -386,6 +423,8 @@ function runMCP(): void {
           try {
             const s = summarizeJsonReport(fs.readFileSync(report, 'utf8'));
             if (s) {
+              // 自动恢复:按 autoReset 配置执行 env-reset(不阻塞结果返回)
+              void maybeAutoReset(s);
               // 报告器插件
               for (const p of plugins.reporters) {
                 try {
@@ -440,6 +479,7 @@ function runMCP(): void {
       if (fatalIssues.length) {
         return textResult(`以下失败 spec 存在语法/纪律问题,已停止重跑(请先修复再跑):\n\n${fatalIssues.join('\n\n')}`);
       }
+      armAutoReset();
       try {
         fs.rmSync(path.join(projectRoot(), 'test-result', 'test-results.json'), { force: true });
       } catch {}

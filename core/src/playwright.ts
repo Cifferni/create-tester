@@ -22,7 +22,10 @@ function playwrightTestCli(cwd?: string): string | null {
 function spawnCapture(args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     // windowsHide:避免 Windows 每次跑测试弹控制台窗口
-    const child = spawn(process.execPath, args, { cwd, env, windowsHide: true });
+    const childEnv = { ...env };
+    // NODE_NO_WINDOW:继承到 Playwright fork 的 worker,从根上消掉控制台闪窗
+    childEnv.NODE_NO_WINDOW = '1';
+    const child = spawn(process.execPath, args, { cwd, env: childEnv, windowsHide: true });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (d) => (stdout += d));
@@ -49,6 +52,8 @@ export function startPlaywrightTest(
   // env 注入:TESTER_ENV 让 playwright.config.ts 从 testerConfig.envs 表解析对应 BASE_URL
   const childEnv = { ...process.env };
   if (opts.env && !process.env.BASE_URL) childEnv.TESTER_ENV = opts.env;
+  // NODE_NO_WINDOW:继承到 Playwright fork 的 worker,从根上消掉控制台闪窗(仅 windowsHide 盖不住子 worker)
+  childEnv.NODE_NO_WINDOW = '1';
   // detached + stdio ignore:不受 server 生命周期影响,也不会因管道满而阻塞
   // windowsHide:Windows 上 detached 默认会新建一个控制台窗口,藏掉它(否则每次 run_tests 都弹一个终端)
   const child = spawn(process.execPath, args, { cwd, env: childEnv, detached: true, stdio: 'ignore', windowsHide: true });
@@ -222,7 +227,9 @@ export async function runPlaywrightTestPassthrough(files: string[], cwd: string,
   const args = [cli, 'test', ...extraArgs, ...files];
   return await new Promise((resolve) => {
     // windowsHide:避免 Windows 跑测试弹控制台窗口
-    const child = spawn(process.execPath, args, { cwd, stdio: 'inherit', windowsHide: true });
+    const childEnv = { ...process.env };
+    childEnv.NODE_NO_WINDOW = '1';
+    const child = spawn(process.execPath, args, { cwd, env: childEnv, stdio: 'inherit', windowsHide: true });
     child.on('close', (code) => resolve(code ?? 1));
   });
 }

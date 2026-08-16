@@ -1,5 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 import { testerConfig } from './tester.config';
+import { authFileName } from './tests/_login';
 
 // 配置来源:tester.config.ts(总开关面板,白话注释)+ 环境变量可覆盖
 //   BASE_URL         被测页面地址(默认 http://localhost:3000;显式设置优先于 envs 表)
@@ -14,8 +15,8 @@ const ACCOUNT = process.env.TESTER_ACCOUNT || 'default';
 // 被测系统是否需要登录(tester.config.ts 的 login.enabled;TESTER_LOGIN=0 可临时关闭)
 // 不需要登录的项目:不走登录、不依赖 auth 文件,直接跑
 const LOGIN = process.env.TESTER_LOGIN !== '0' && (testerConfig.login?.enabled ?? true);
-// 各账号登录态独立文件(auth-<account>.json),多账号互不覆盖
-const AUTH_FILE = `test-result/auth-${ACCOUNT}.json`;
+// 登录态文件:按 环境+账号 区分(auth-<env>-<account>.json),与 _login.ts/auth.setup.ts/login.cjs 保持一致
+const AUTH_FILE = authFileName();
 // 被测地址优先级:显式 BASE_URL > TESTER_ENV 命中 envs 表 > 默认环境的地址 > 兜底
 const BASE_URL = process.env.BASE_URL || (ENV ? ENVS[ENV] : ENVS[DEFAULT_ENV]) || 'http://localhost:3000';
 

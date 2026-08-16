@@ -93,11 +93,13 @@ AI 记住后自动登录,**整轮只登一次**。登录要验证码/短信时,�
 用例固化之后,可以直接命令行跑,无人值守:
 
 ```bash
-npm run test                 # 跑全部
+npm run test                 # 跑全部(多个环境时会弹出菜单让你选,回车用默认环境)
 npm run test -- --last-failed # 只重跑上次失败的
+TESTER_ENV=uat npm run test  # 跳过菜单,直接跑指定环境
 ```
 
 > 全程自动:登录一次 → 跑所有用例 → 出报告。**不需要开 AI / MCP。**
+> 环境切换不用记变量:直接 `npm run test` 会列出 `tester.config.ts` 里配置的环境,按数字选即可;`npm run login` 同理(登录哪个环境,登录态就存到哪份文件,测试跑哪个环境用哪份)。
 
 ---
 

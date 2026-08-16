@@ -30,6 +30,11 @@ export interface DisciplineIssue {
 // 纪律扫描规则:命中的违规在 run_tests/retry_failed 跑前拦下,让"禁 waitForTimeout/终端 sleep"从提示词变成代码强制。
 const DISCIPLINE_RULES: Array<{ re: RegExp; fatal: boolean; hint: string }> = [
   {
+    re: /test\.skip\(\s*['"`]/,
+    fatal: false,
+    hint: '声明式跳过 test.skip(title, fn) 不会在报告里显示跳过原因。要显示原因改用运行时跳过:test(\'标题\', async () => { test.skip(true, \'原因\'); ... })。'
+  },
+  {
     re: /page\.waitForTimeout\(/,
     fatal: true,
     hint: '禁止 page.waitForTimeout(硬编码延时):改用 waitForVisible/waitForClickable/waitForText/waitForURL,等状态不等时间。'

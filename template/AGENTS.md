@@ -41,7 +41,9 @@
 
 - 探查用 `browser_snapshot`/`browser_find`(大页面先对容器 target 精准看),别反复跑试错。
 - 选择性执行:`tag` + `tester_run_tests {grep:'@smoke'}` 或 `npm run test -- --grep @smoke`。
-- 环境:先构造(`tester_env_reset`/清理),构造不了才 `test.skip`+说明;环境限制不算 bug,skip 即可。
+- 环境:先构造(`tester_env_reset`/清理),构造不了才跳过+说明;环境限制不算 bug,skip 即可。
+  **skip 必须带原因且写进报告**:用运行时跳过 `test('标题', async ({ page }) => { test.skip(true, '原因'); ... })`,
+  不要用声明式 `test.skip('标题', fn)`——后者报告里不显示原因,纪律预检会警告。
 - 看结果可选 `tester view`(只读 Web 面板)。
 
 ## 插件(可选)

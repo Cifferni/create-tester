@@ -154,8 +154,8 @@ function writePackageJson(target: string, name: string, browser: string, extras:
   const pkgName = sanitizeName(name);
   const browsers = [browser, ...extras].filter((x) => x !== 'chrome');
   const scripts: Record<string, string> = {
-    test: 'playwright test',
-    'test:headed': 'playwright test --headed',
+    test: 'node scripts/test.cjs',
+    'test:headed': 'node scripts/test.cjs --headed',
     login: 'node scripts/login.cjs',
     mcp: 'node mcp/server.cjs'
   };
@@ -213,8 +213,10 @@ program
   .command('upgrade')
   .description('升级当前测试工程到最新引擎(更新 @create-tester/core 依赖,不覆盖你改过的任何文件;缺的新模板文件会补齐)')
   .option('--no-install', '只改 package.json 版本号,不执行 npm install')
-  .action((opts: { install?: boolean }) => {
+  .option('--update-scripts', '把 scripts/ 下的工具脚本(login.cjs/test.cjs/_menu.cjs)同步到模板最新版(会覆盖本地修改)')
+  .action((opts: { install?: boolean; updateScripts?: boolean }) => {
     const noInstall = opts.install === false || process.argv.includes('--no-install');
+    const updateScripts = opts.updateScripts || process.argv.includes('--update-scripts');
     const root = process.cwd();
     const pkgFile = path.join(root, 'package.json');
     if (!fs.existsSync(pkgFile)) {
@@ -235,24 +237,77 @@ program
     const filledText = filled.length
       ? `已补齐新模板文件:\n${filled.map((f) => `  - ${f}`).join('\n')}`
       : '无需补齐模板文件(已有的都在)';
+    // 检测 scripts/ 工具脚本是否有新版(默认只提示不覆盖;--update-scripts 才同步)
+    const scriptsInfo = checkOutdatedScripts(root);
+    const runInstall = () => {
+      const child = spawn('npm', ['install', '@create-tester/core@latest', '--save-dev'], {
+        cwd: root,
+        stdio: 'inherit',
+        shell: true,
+        windowsHide: true
+      });
+      child.on('close', (code) => {
+        console.log(`[upgrade] 引擎已升级到最新。未覆盖你改过的任何文件(配置/脚本/specs)。\n[upgrade] ${filledText.replace(/\n/g, '\n[upgrade] ')}`);
+        console.log(`[upgrade] ${scriptsText.replace(/\n/g, '\n[upgrade] ')}`);
+        if (scriptsInfo.updates.length && !updateScripts) {
+          console.log('[upgrade] 想同步工具脚本到新版?重跑:`npx create-tester@latest upgrade --update-scripts`');
+        }
+        process.exit(code ?? 0);
+      });
+    };
+    // 同步工具脚本(可选,--update-scripts):放在 install/no-install 之前,两种模式都生效
+    let syncedScripts: string[] = [];
+    if (updateScripts && scriptsInfo.updates.length) {
+      syncedScripts = syncTemplateScripts(root);
+      console.log(`[upgrade] 已把工具脚本同步到模板最新版:${syncedScripts.join('、')}(若你改过这些脚本,改动已被新版替换)`);
+    }
+    const scriptsText = syncedScripts.length
+      ? `工具脚本已同步到模板最新版:${syncedScripts.join('、')}`
+      : scriptsInfo.updates.length
+        ? `检测到以下工具脚本有新版(当前是旧版):\n${scriptsInfo.updates.map((f) => `  - ${f}`).join('\n')}`
+        : '工具脚本已是最新(scripts/login.cjs、test.cjs、_menu.cjs)';
     if (noInstall) {
       pkg.devDependencies!['@create-tester/core'] = 'latest';
       fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
       console.log(`[upgrade] 已把 @create-tester/core 版本号改为 latest,请执行 npm install\n[upgrade] ${filledText.replace(/\n/g, '\n[upgrade] ')}`);
+      console.log(`[upgrade] ${scriptsText.replace(/\n/g, '\n[upgrade] ')}`);
+      if (scriptsInfo.updates.length && !updateScripts) {
+        console.log('[upgrade] 想同步工具脚本到新版?重跑:`npx create-tester@latest upgrade --update-scripts --no-install`');
+      }
       process.exit(0);
     }
-    // 正常路径:直接 npm install 最新版(依赖版本管理,引擎文件不动)
-    const child = spawn('npm', ['install', '@create-tester/core@latest', '--save-dev'], {
-      cwd: root,
-      stdio: 'inherit',
-      shell: true,
-      windowsHide: true
-    });
-    child.on('close', (code) => {
-      console.log(`[upgrade] 引擎已升级到最新。未覆盖你改过的任何文件(配置/脚本/specs)。\n[upgrade] ${filledText.replace(/\n/g, '\n[upgrade] ')}`);
-      process.exit(code ?? 0);
-    });
+    runInstall();
   });
+
+// 检测 scripts/ 工具脚本是否有新版(与模板内容对比,只提示不覆盖)。返回有新版的文件列表。
+function checkOutdatedScripts(root: string): { updates: string[] } {
+  const templateDir = path.join(__dirname, '..', 'template');
+  const updates: string[] = [];
+  const scripts = [path.join('scripts', '_menu.cjs'), path.join('scripts', 'login.cjs'), path.join('scripts', 'test.cjs')];
+  for (const rel of scripts) {
+    const src = path.join(templateDir, rel);
+    const dst = path.join(root, rel);
+    if (!fs.existsSync(src) || !fs.existsSync(dst)) continue; // 缺失的交给 fillMissingTemplateFiles 或忽略
+    if (fs.readFileSync(src, 'utf8') !== fs.readFileSync(dst, 'utf8')) updates.push(rel);
+  }
+  return { updates };
+}
+
+// 把 scripts/ 工具脚本同步到模板最新版(覆盖本地)。返回本次同步的文件列表。
+function syncTemplateScripts(root: string): string[] {
+  const templateDir = path.join(__dirname, '..', 'template');
+  const synced: string[] = [];
+  const scripts = [path.join('scripts', '_menu.cjs'), path.join('scripts', 'login.cjs'), path.join('scripts', 'test.cjs')];
+  for (const rel of scripts) {
+    const src = path.join(templateDir, rel);
+    const dst = path.join(root, rel);
+    if (!fs.existsSync(src)) continue;
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+    synced.push(rel);
+  }
+  return synced;
+}
 
 // 补齐新版模板新增的文件(只补缺失的):tester.config.ts / plugin/vlm.example.cjs / ci.example.yml。
 // 老工程升级后 core 已更新,但缺少新模板文件时新功能(如 tester.config.ts 配置)拿不到,这里补上。
