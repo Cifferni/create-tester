@@ -272,20 +272,6 @@ function fillMissingTemplateFiles(root: string): string[] {
     filled.push(rel);
     console.log(`[upgrade] 已补齐新模板文件:${rel}(新版本引入,你未改过它)`);
   }
-  // 修复已知 bug 的模板文件:playwright-mcp.json 旧版带错误的 storageState("auth.json" 应为无登录态)。
-  // 只更新"未被用户改过"的旧 bug 版(内容含 storageState: test-result/auth.json 的即认为未改),用户自定义过的跳过。
-  const mcpCfg = path.join(root, 'mcp', 'playwright-mcp.json');
-  if (fs.existsSync(mcpCfg)) {
-    const old = fs.readFileSync(mcpCfg, 'utf8');
-    if (old.includes('test-result/auth.json')) {
-      const src = path.join(templateDir, 'mcp', 'playwright-mcp.json');
-      if (fs.existsSync(src)) {
-        fs.writeFileSync(mcpCfg, fs.readFileSync(src, 'utf8'), 'utf8');
-        filled.push('mcp/playwright-mcp.json');
-        console.log('[upgrade] 已修复 mcp/playwright-mcp.json(移除错误的 storageState 预加载,登录由测试运行时负责)');
-      }
-    }
-  }
   return filled;
 }
 

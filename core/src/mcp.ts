@@ -19,7 +19,7 @@ import { checkSpecQuality } from './checkSyntax';
 import { closeBrowser } from './browser';
 import { loadPlugins } from './plugins';
 import { playwrightConfig } from './config';
-import { effectiveTesterConfig, testerConfig as readTesterConfig } from './config';
+import { effectiveTesterConfig, testerConfig as readTesterConfig, loginEnabled } from './config';
 import { parseCaseToDsl, dslToCode, dslToAssertions } from './dsl';
 import { startPlaywrightTest, runPlaywrightTest, runWithRetry, summarizeJsonReport, failedSpecFiles } from './playwright';
 import { locatorCacheStats } from './selectorCache';
@@ -484,6 +484,7 @@ function runMCP(): void {
           `  开关-选择器缓存:${eff.switchesResolved.locatorCache ? '开' : '关'}(TESTER_LOCATOR_CACHE 可覆盖)`,
           `  开关-变量落盘:${eff.switchesResolved.vars ? '开' : '关'}(TESTER_VARS 可覆盖)`,
           `  重试:${retry.maxRounds ?? 2} 轮,分类:${(retry.retryable || ['定位', '网络', '超时']).join('/')}`,
+          `  登录:${loginEnabled() ? '需要(走 auth.setup)' : '不需要(跳过登录,直接测)'}(TESTER_LOGIN=0 可关)`,
           `  VLM 视觉降级:${eff.vlmResolved ? '开' : '关'}(配 plugin/ 的 locatorVlm 插件后可开)`,
           envs.length ? `  多环境:${envs.map(([k, v]) => `${k}=${v}`).join(', ')}` : '  多环境:(未配置)'
         ].join('\n')

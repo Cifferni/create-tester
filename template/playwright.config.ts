@@ -11,6 +11,9 @@ const DEFAULT_ENV = testerConfig.defaultEnv || 'test';
 const ENV = process.env.TESTER_ENV || '';
 const BROWSER = process.env.TESTER_BROWSER || 'chromium';
 const ACCOUNT = process.env.TESTER_ACCOUNT || 'default';
+// 被测系统是否需要登录(tester.config.ts 的 login.enabled;TESTER_LOGIN=0 可临时关闭)
+// 不需要登录的项目:不走登录、不依赖 auth 文件,直接跑
+const LOGIN = process.env.TESTER_LOGIN !== '0' && (testerConfig.login?.enabled ?? true);
 // 各账号登录态独立文件(auth-<account>.json),多账号互不覆盖
 const AUTH_FILE = `test-result/auth-${ACCOUNT}.json`;
 // 被测地址优先级:显式 BASE_URL > TESTER_ENV 命中 envs 表 > 默认环境的地址 > 兜底
@@ -41,13 +44,17 @@ export default defineConfig({
     screenshot: 'only-on-failure',
     trace: 'retain-on-failure',
     // 录屏:失败/超时的用例保留视频(配合截图+trace,复盘更完整)
-    video: 'retain-on-failure'
+    video: 'retain-on-failure',
+    // 不需要登录时就不挂登录态;需要登录时 auth.setup 生成后由 storageState 加载
+    storageState: LOGIN ? AUTH_FILE : undefined
   },
-  projects: [
-    // setup 先登录一次存 test-result/auth-<account>.json,业务用例共享登录态(整轮只登一次)
-    { name: 'setup', testMatch: /auth\.setup\.ts/ },
-    { ...projectFor(BROWSER), dependencies: ['setup'] }
-  ]
+  projects: LOGIN
+    ? [
+        // setup 先登录一次存 test-result/auth-<account>.json,业务用例共享登录态(整轮只登一次)
+        { name: 'setup', testMatch: /auth\.setup\.ts/ },
+        { ...projectFor(BROWSER), dependencies: ['setup'] }
+      ]
+    : [projectFor(BROWSER)]
 });
 
 function projectFor(browser: string) {
@@ -55,13 +62,13 @@ function projectFor(browser: string) {
     case 'chrome':
       return {
         name: 'chrome',
-        use: { ...devices['Desktop Chrome'], channel: 'chrome', storageState: AUTH_FILE }
+        use: { ...devices['Desktop Chrome'], channel: 'chrome', storageState: LOGIN ? AUTH_FILE : undefined }
       };
     case 'firefox':
-      return { name: 'firefox', use: { ...devices['Desktop Firefox'], storageState: AUTH_FILE } };
+      return { name: 'firefox', use: { ...devices['Desktop Firefox'], storageState: LOGIN ? AUTH_FILE : undefined } };
     case 'webkit':
-      return { name: 'webkit', use: { ...devices['Desktop Safari'], storageState: AUTH_FILE } };
+      return { name: 'webkit', use: { ...devices['Desktop Safari'], storageState: LOGIN ? AUTH_FILE : undefined } };
     default:
-      return { name: 'chromium', use: { ...devices['Desktop Chrome'], storageState: AUTH_FILE } };
+      return { name: 'chromium', use: { ...devices['Desktop Chrome'], storageState: LOGIN ? AUTH_FILE : undefined } };
   }
 }

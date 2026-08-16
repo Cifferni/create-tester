@@ -24,7 +24,7 @@ export { startWebView } from './webview';
 export type { WebViewOptions } from './webview';
 export { checkTsSyntax, formatSyntaxErrors, checkSpecQuality, scanDiscipline } from './checkSyntax';
 export { launchBrowser, closeBrowser } from './browser';
-export { playwrightConfig, testerConfig, effectiveTesterConfig, locatorCacheEnabled, varsEnabled, vlmConfig, clearConfigCache } from './config';
+export { playwrightConfig, testerConfig, effectiveTesterConfig, locatorCacheEnabled, varsEnabled, vlmConfig, loginEnabled, clearConfigCache } from './config';
 export type { PWConfig, TesterConfig } from './config';
 export { getPageSnapshot } from './pagesnapshot';
 export {

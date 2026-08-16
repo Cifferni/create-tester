@@ -1,6 +1,7 @@
-fix: 移除 playwright-mcp.json 错误的 storageState 预加载——MCP 浏览器以无登录态启动,不再因 auth.json 缺失报 ENOENT
+feat: 新增 login.enabled 开关——不需要登录的项目跳过登录、不依赖 auth 文件,直接测
 
-- 根因: playwright-mcp.json 配死 storageState: "test-result/auth.json",但登录态文件实际是 auth-<account>.json,且首次未登录时文件根本不存在,导致 browser_navigate 报 ENOENT
-- 修复: 模板移除 contextOptions.storageState,MCP 浏览器无登录态启动,登录由 ensureLoggedIn(spec 内)/tester_login(人工)负责;npm run test 的登录态走 Playwright 自己的 auth.setup storageState,不受影响
-- upgrade: 检测旧版含 storageState: auth.json 的 playwright-mcp.json 自动修复(用户自定义过的不动)
-- 验证: 老工程 upgrade → 自动修复该文件
+- tester.config.ts 加 login.enabled(默认 true);TESTER_LOGIN=0 可临时关
+- playwright.config.ts: login 关时去掉 auth.setup 项目、storageState 置 undefined(不再因 auth 文件缺失报错)
+- auth.setup.ts: 加 TESTER_LOGIN 守卫双保险
+- config.ts: loginEnabled() 解析;tester_config 工具展示登录开关;README 环境变量表补 TESTER_LOGIN
+- 验证: login 开=2项目+storageState;关=1项目+无storageState

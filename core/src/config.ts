@@ -43,6 +43,11 @@ export interface TesterConfig {
     /** 单次视觉定位超时秒数,默认 8(超时即放弃,不阻塞测试链路) */
     timeout?: number;
   };
+  /** 登录开关:被测系统需要登录就 true(默认),不需要登录的项目改成 false 就不走登录、不依赖 auth 文件 */
+  login?: {
+    /** 是否需要登录(默认 true) */
+    enabled?: boolean;
+  };
 }
 
 function configFile(): string {
@@ -122,4 +127,11 @@ export function vlmConfig(): { enabled: boolean; model: string; apiUrl: string; 
     apiKey: process.env.TESTER_VLM_API_KEY || v.apiKey || '',
     timeoutMs: Math.max((v.timeout ?? 8), 1) * 1000
   };
+}
+
+// 登录开关:被测系统需要登录吗(默认 true)。env TESTER_LOGIN=0 可临时关闭。
+export function loginEnabled(): boolean {
+  if (process.env.TESTER_LOGIN !== undefined) return process.env.TESTER_LOGIN !== '0';
+  const l = testerConfig().login?.enabled;
+  return l !== undefined ? l : true;
 }

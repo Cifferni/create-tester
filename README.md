@@ -282,6 +282,7 @@ export const testerConfig = {
 | `TESTER_ACCOUNT` | 账号 | 多账号隔离(auth-<account>.json) |
 | `TESTER_LOCATOR_CACHE` | `switches.locatorCache` | `0` 关闭选择器缓存 |
 | `TESTER_VARS` | `switches.vars` | `0` 关闭变量全局落盘 |
+| `TESTER_LOGIN` | `login.enabled` | `0` 临时关闭登录(不需要登录的项目直接测) |
 
 用 `tester_config` 工具可只读查看当前生效的配置与开关(排查"缓存为什么没生效"等)。
 
