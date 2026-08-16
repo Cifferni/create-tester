@@ -208,9 +208,10 @@ function readAllStdin(): Promise<string> {
 // 升级已建的测试工程:在工程根目录跑 `npx create-tester@latest upgrade`
 // 引擎核心已拆为 @create-tester/core 依赖,升级=更新依赖版本(npm install @create-tester/core@latest),
 // 不再覆盖任何文件,也不会触碰用户改过的配置/脚本。
+// 新版引入的新模板文件(如 tester.config.ts)会补齐,但绝不覆盖已存在的文件。
 program
   .command('upgrade')
-  .description('升级当前测试工程到最新引擎(更新 @create-tester/core 依赖,不覆盖你改过的任何文件)')
+  .description('升级当前测试工程到最新引擎(更新 @create-tester/core 依赖,不覆盖你改过的任何文件;缺的新模板文件会补齐)')
   .option('--no-install', '只改 package.json 版本号,不执行 npm install')
   .action((opts: { install?: boolean }) => {
     const root = process.cwd();
@@ -228,6 +229,8 @@ program
       console.error('[upgrade] 当前工程未声明 @create-tester/core,无需升级');
       process.exit(0);
     }
+    // 补齐新版引入的模板文件(只补缺失的,绝不覆盖已存在的):如 tester.config.ts 等
+    fillMissingTemplateFiles(root);
     if (opts.install === false) {
       pkg.devDependencies!['@create-tester/core'] = 'latest';
       fs.writeFileSync(pkgFile, JSON.stringify(pkg, null, 2) + '\n', 'utf8');
@@ -242,10 +245,27 @@ program
       windowsHide: true
     });
     child.on('close', (code) => {
-      console.log('[upgrade] 引擎已升级到最新。未覆盖你改过的任何文件(配置/脚本/specs)。');
+      console.log('[upgrade] 引擎已升级到最新。未覆盖你改过的任何文件(配置/脚本/specs);缺的新模板文件已补齐。');
       process.exit(code ?? 0);
     });
   });
+
+// 补齐新版模板新增的文件(只补缺失的):tester.config.ts / plugin/vlm.example.cjs / ci.example.yml。
+// 老工程升级后 core 已更新,但缺少新模板文件时新功能(如 tester.config.ts 配置)拿不到,这里补上。
+function fillMissingTemplateFiles(root: string): void {
+  const templateDir = path.join(__dirname, '..', 'template');
+  if (!fs.existsSync(templateDir)) return; // 从 npm 包运行时 template 在包内,路径有效
+  const toFill = ['tester.config.ts', path.join('plugin', 'vlm.example.cjs'), 'ci.example.yml'];
+  for (const rel of toFill) {
+    const src = path.join(templateDir, rel);
+    const dst = path.join(root, rel);
+    if (!fs.existsSync(src)) continue;
+    if (fs.existsSync(dst)) continue; // 已有(用户改过或已补过)不覆盖
+    fs.mkdirSync(path.dirname(dst), { recursive: true });
+    fs.copyFileSync(src, dst);
+    console.log(`[upgrade] 已补齐新模板文件:${rel}(新版本引入,你未改过它)`);
+  }
+}
 
 program
   .name('create-tester')
