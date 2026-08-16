@@ -34,6 +34,53 @@
 
 验证码登录首次跑一次 `npm run login` 手动登录,之后自动复用;回归 `npm run test` 不需要 AI/MCP。
 
+## 架构总览
+
+```mermaid
+flowchart TB
+    subgraph TestEngineer["测试人员(零代码)"]
+        A[放用例到 test-cases/] --> B[用 AI 打开工程说需求]
+    end
+
+    subgraph AI["AI Harness(Claude Code / Cursor / opencode)"]
+        MCP1["tester MCP<br/>读用例/生成spec/跑测/报告/登录/配置"]
+        MCP2["playwright MCP(官方)<br/>浏览器操作:看页面/点击/断言"]
+        AGENTS["AGENTS.md 工作规范<br/>断言纪律/等待纪律/选择器优先级"]
+    end
+
+    B --> MCP1
+    B --> MCP2
+
+    subgraph Engine["@create-tester/core 引擎"]
+        DSL["DSL 中间契约<br/>用例 → 步骤 → Playwright 代码"]
+        EXEC["执行层<br/>apiRecorder/expectApi/selfHeal缓存/waitFor*/guard防护"]
+        LOC["定位能力<br/>selfHeal多候选 → 持久缓存 → Shadow穿透 → VLM降级"]
+        VAR["数据层<br/>setVar/getVar 跨用例传参"]
+        CONF["配置 tester.config.ts<br/>环境表/开关/重试/视觉"]
+    end
+
+    subgraph Runtime["运行期(可无人值守)"]
+        PW["Playwright 测试进程<br/>auth.setup 登录 → 跑 specs → 出报告"]
+        OUT["test-result/<br/>HTML报告/JSON/截图/视频/缓存/变量"]
+    end
+
+    MCP1 --> DSL --> EXEC --> LOC
+    EXEC --> VAR
+    MCP1 --> CONF
+    EXEC --> PW --> OUT
+    MCP2 -->|浏览器控制| PW
+    MCP1 -->|读结果| OUT
+
+    classDef ai fill:#fff3bf,stroke:#f08c00;
+    classDef eng fill:#d0ebff,stroke:#1c7ed6;
+    classDef run fill:#d3f9d8,stroke:#2b8a3e;
+    class AI ai;
+    class Engine eng;
+    class Runtime run;
+```
+
+> 流程:`tester_convert_case` 读用例 → `browser_snapshot`/`browser_find` 看页面 → `tester_generate_spec` 生成 spec(DSL 自动生成操作+断言)→ `tester_run_tests` 后台跑 → `tester_status`/`tester_failures` 看结果。固化后 `npm run test` 无人值守即可回归。
+
 ## 安装 / 快速开始
 
 ```bash
@@ -74,7 +121,7 @@ tester install-browsers       # 安装 Playwright 浏览器(postinstall 自动�
 
 ## 多环境 & CI/CD
 
-**多环境**:`playwright.config.ts` 顶部 `ENVS` 表维护各环境地址,跑 `tester run --env uat` 或 `TESTER_ENV=uat` 自动切换被测地址(显式 `BASE_URL` 永远最高优先级)。账号密码走 `tests/_login.ts` + `TESTER_ACCOUNT`。
+**多环境**:`tester.config.ts` 的 `envs` 表维护各环境地址,`defaultEnv` 决定默认跑哪个(缺省 test)。`tester run --env uat` 或 `TESTER_ENV=uat` 自动切到对应环境;不指定环境时自动用 `defaultEnv` 的地址(显式 `BASE_URL` 永远最高优先级)。账号密码走 `tests/_login.ts` + `TESTER_ACCOUNT`。
 
 ```bash
 tester run --env test             # 跑 test 环境
@@ -180,12 +227,14 @@ my-test/
 │   ├── _login.ts     登录 helper(AI 填账号密码,测试人员不碰;支持多账号)
 │   ├── auth.setup.ts 登录 setup:登录一次存 test-result/auth-<account>.json
 │   └── <功能>/*.spec.ts
+├── plugin/           可选插件(vlm.example.cjs 视觉兜底示例)
 ├── mcp/              测试工程专属文件
 │   ├── server.cjs    MCP server 薄壳(require @create-tester/core;升级不用改它)
 │   ├── playwright-mcp.json  官方 @playwright/mcp 配置文件
 │   └── env-reset.cjs 环境清理钩子(项目按应用实现)
 ├── scripts/login.cjs 人工登录(验证码场景;支持 TESTER_ACCOUNT 多账号)
-├── playwright.config.ts  被测地址 + 浏览器 + 报告 + storageState 配置(ENVS 多环境表)
+├── tester.config.ts  配置总开关(环境地址/开关/重试/视觉兜底,白话注释)
+├── playwright.config.ts  Playwright 配置(读 tester.config.ts + 环境变量)
 ├── ci.example.yml        CI 示例(GitHub Actions:装依赖/装浏览器/跑回归/传报告)
 ├── .mcp.json         双 MCP server 配置(playwright 官方 + tester)
 ├── AGENTS.md          给 AI 的工作规范(双 server 分工/断言纪律/等待纪律/选择器优先级)
@@ -193,18 +242,17 @@ my-test/
 └── test-result/      所有输出:report/(HTML 报告)、test-results.json、auth-<account>.json、locator-cache.json(选择器缓存)、.vars.json(跨用例变量)、output/(截图/trace/视频)
 ```
 
-## 配置(唯一配置源 playwright.config.ts,环境变量可覆盖)
+## 配置(唯一配置源 tester.config.ts,环境变量可覆盖)
 
-项目**没有额外配置文件**:配置写在生成的 `playwright.config.ts` 里(顶部 `testerConfig` 对象),环境变量可覆盖(优先级 **env > testerConfig > 默认**)。测试人员不碰配置——地址/账号在对话里说,AI 用 `tester_set_base_url` 等工具改文件。
-
-`playwright.config.ts` 顶部 `testerConfig`:
+配置集中在生成的 **`tester.config.ts`**(每项有白话注释):环境地址表、功能开关、重试策略、VLM 视觉兜底。环境变量可覆盖(优先级 **env > tester.config.ts > 内置默认**)。测试人员不碰配置——地址/账号在对话里说,AI 处理。
 
 ```ts
 export const testerConfig = {
   envs: { test: 'http://localhost:3000', uat: 'http://uat.xx.com' }, // 多环境地址表
+  defaultEnv: 'test',        // 不指定环境时跑哪个(缺省 test)
   switches: { locatorCache: true, vars: true },  // 选择器缓存 / 跨用例变量
   retry: { maxRounds: 2, retryable: ['定位', '网络', '超时'] }, // 失败自动重试
-  vlm: { enabled: false }  // VLM 视觉降级兜底
+  vlm: { enabled: false }    // VLM 视觉降级兜底
 };
 ```
 
@@ -212,8 +260,8 @@ export const testerConfig = {
 
 | 环境变量 | 覆盖项 | 说明 |
 | --- | --- | --- |
-| `BASE_URL` | 被测地址 | 最高优先级,覆盖 ENVS |
-| `TESTER_ENV` | 环境名 | 命中 `envs` 表自动切地址 |
+| `BASE_URL` | 被测地址 | 最高优先级,覆盖 envs 表 |
+| `TESTER_ENV` | 环境名 | 命中 `envs` 表切对应地址;未设时用 `defaultEnv` 的地址 |
 | `TESTER_BROWSER` | 浏览器 | chromium / chrome / firefox / webkit |
 | `TESTER_ACCOUNT` | 账号 | 多账号隔离(auth-<account>.json) |
 | `TESTER_LOCATOR_CACHE` | `switches.locatorCache` | `0` 关闭选择器缓存 |

@@ -1,0 +1,1 @@
+docs: README 更新配置章节/项目结构/多环境到 tester.config.ts,新增架构总览图(mermaid);同步修正 ci.example/CLI/config 注释过时表述

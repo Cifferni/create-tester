@@ -469,7 +469,7 @@ function runMCP(): void {
 
   server.tool(
     'tester_config',
-    '查看当前生效的 tester 配置(playwright.config.ts 导出的 testerConfig + 环境变量覆盖后的最终值):开关(选择器缓存/变量落盘)/多环境地址表/重试策略/VLM 视觉降级。排查"为什么缓存没生效"等配置类问题时先看这里',
+    '查看当前生效的 tester 配置(tester.config.ts + 环境变量覆盖后的最终值):开关(选择器缓存/变量落盘)/多环境地址表/重试策略/VLM 视觉降级。排查"为什么缓存没生效"等配置类问题时先看这里',
     {},
     () => {
       const t = readTesterConfig();
@@ -480,7 +480,7 @@ function runMCP(): void {
       return textResult(
         [
           '当前 tester 配置(环境变量 > playwright.config.ts testerConfig > 默认):',
-          `  被测地址:${baseURL}(BASE_URL / ENVS / use.baseURL)`,
+          `  被测地址:${baseURL}(BASE_URL / envs表 / use.baseURL)`,
           `  开关-选择器缓存:${eff.switchesResolved.locatorCache ? '开' : '关'}(TESTER_LOCATOR_CACHE 可覆盖)`,
           `  开关-变量落盘:${eff.switchesResolved.vars ? '开' : '关'}(TESTER_VARS 可覆盖)`,
           `  重试:${retry.maxRounds ?? 2} 轮,分类:${(retry.retryable || ['定位', '网络', '超时']).join('/')}`,

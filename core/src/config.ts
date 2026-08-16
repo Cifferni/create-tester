@@ -1,4 +1,4 @@
-// 运行配置来源:被测地址/浏览器/开关来自 playwright.config.ts(唯一配置源),环境变量可覆盖。
+// 运行配置来源:被测地址/浏览器/开关来自 tester.config.ts(经 playwright.config.ts 暴露),环境变量可覆盖。
 // 优先级:环境变量 > playwright.config.ts 导出的 testerConfig > 内置默认值。
 
 import fs from 'fs';
@@ -12,7 +12,7 @@ export interface PWConfig {
 }
 
 export interface TesterConfig {
-  /** 多环境地址表(playwright.config.ts 的 ENVS;TESTER_ENV 命中时切到对应地址) */
+  /** 多环境地址表(tester.config.ts 的 envs;TESTER_ENV 命中时切到对应地址) */
   envs?: Record<string, string>;
   /** 默认环境名:未传 TESTER_ENV 时用该环境的地址,缺省 'test' */
   defaultEnv?: string;
@@ -61,7 +61,7 @@ function readModule(): { default?: { use?: { baseURL?: string }; projects?: Arra
   }
 }
 
-// 从 playwright.config.ts 读被测地址与浏览器(单一配置源)
+// 从 playwright.config.ts 读被测地址与浏览器(配置源为 tester.config.ts,经 playwright.config.ts 暴露)
 export function playwrightConfig(urlOverride?: string): PWConfig {
   let baseURL = 'http://localhost:3000';
   let browser: BrowserName = 'chromium';

@@ -32,7 +32,7 @@ program
   .option('--headed', '带界面执行(默认无头)')
   .option('--workers <n>', '并行 worker 数(需用例彼此隔离,否则会互踩数据)')
   .option('--grep <pattern>', '只跑匹配的用例(标签或标题关键字,如 @smoke)')
-  .option('--env <name>', '环境名(test/uat/prod 等,需在 playwright.config.ts 的 ENVS 里配置;等价于 TESTER_ENV=<name> 且 BASE_URL 取该环境地址)')
+  .option('--env <name>', '环境名(test/uat/prod 等,对应 tester.config.ts 的 envs 表;不指定时用 defaultEnv 的地址,等价于 TESTER_ENV=<name>)')
   .action(async (files: string[] | undefined, opts: { headed?: boolean; workers?: string; grep?: string; env?: string }) => {
     const list = files && files.length ? files : defaultSpecFiles();
     if (!list.length) {

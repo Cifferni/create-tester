@@ -1,7 +1,7 @@
 # 测试工程接入 CI 示例(GitHub Actions)
 # 用法:把这个文件复制为 .github/workflows/regression.yml,配置好被测环境与账号后 push 即可。
 # 关键点:
-#   - 被测环境通过 env 注入 BASE_URL / TESTER_ENV(多环境表在 playwright.config.ts 的 ENVS)
+#   - 被测环境通过 env 注入 BASE_URL / TESTER_ENV(多环境表在 tester.config.ts 的 envs)
 #   - 账号密码放 GitHub Secrets(TESTER_ACCOUNT / TESTER_PASSWORD),别写死在文件里
 #   - auth.setup 用 storageState 登录一次,验证码场景需先人工登录导出 auth-<account>.json 或接 UI 测试
 #   - 退出码:全部通过=0,有失败=1,流水线自动判红
