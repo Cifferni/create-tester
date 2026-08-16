@@ -14,6 +14,8 @@ export interface PWConfig {
 export interface TesterConfig {
   /** 多环境地址表(playwright.config.ts 的 ENVS;TESTER_ENV 命中时切到对应地址) */
   envs?: Record<string, string>;
+  /** 默认环境名:未传 TESTER_ENV 时用该环境的地址,缺省 'test' */
+  defaultEnv?: string;
   /** 功能开关(环境变量可覆盖) */
   switches?: {
     /** 选择器持久缓存,对应 TESTER_LOCATOR_CACHE=0 关闭 */

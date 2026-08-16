@@ -6,14 +6,15 @@ import { testerConfig } from './tester.config';
 //   TESTER_BROWSER   浏览器:chromium/chrome/firefox/webkit(默认 chromium)
 //   TESTER_ACCOUNT   账号(缺省 default;多账号隔离时用,如 TESTER_ACCOUNT=admin 切第二个账号)
 //   TESTER_ENV       环境名(test/uat/prod 等),命中 testerConfig.envs 表则自动覆盖 BASE_URL
-const ENVS = testerConfig.envs;
+const ENVS = testerConfig.envs || {};
+const DEFAULT_ENV = testerConfig.defaultEnv || 'test';
 const ENV = process.env.TESTER_ENV || '';
 const BROWSER = process.env.TESTER_BROWSER || 'chromium';
 const ACCOUNT = process.env.TESTER_ACCOUNT || 'default';
 // 各账号登录态独立文件(auth-<account>.json),多账号互不覆盖
 const AUTH_FILE = `test-result/auth-${ACCOUNT}.json`;
-// TESTER_ENV 命中则覆盖被测地址;显式 BASE_URL 永远最高优先级
-const BASE_URL = process.env.BASE_URL || (ENVS[ENV] || 'http://localhost:3000');
+// 被测地址优先级:显式 BASE_URL > TESTER_ENV 命中 envs 表 > 默认环境的地址 > 兜底
+const BASE_URL = process.env.BASE_URL || (ENV ? ENVS[ENV] : ENVS[DEFAULT_ENV]) || 'http://localhost:3000';
 
 // tester 专属配置来自 tester.config.ts(re-export 供 @create-tester/core 读取;优先级 env > 本文件 > 默认)
 export { testerConfig };
