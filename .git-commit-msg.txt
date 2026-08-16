@@ -1,1 +1,1 @@
-docs: README/template README 升级章节加「补齐/不覆盖」行为说明表——明确哪些文件缺失时补、哪些绝不碰
+chore: bump 0.7.3——README/template README 升级章节加「补齐/不覆盖」行为说明表
