@@ -1,6 +1,6 @@
 {
   "name": "create-tester",
-  "version": "0.6.4",
+  "version": "0.7.0",
   "description": "tester 一体化:脚手架(npm create tester)+ 引擎(CLI/API/MCP 工具服务器),面向测试工程师的 AI 驱动页面测试",
   "keywords": [
     "testing",
@@ -42,7 +42,7 @@
     "prepublishOnly": "npm run build"
   },
   "dependencies": {
-    "@create-tester/core": "^0.6.4",
+    "@create-tester/core": "^0.7.0",
     "commander": "^12.1.0",
     "prompts": "^2.4.2"
   },

@@ -76,9 +76,15 @@ function renderHtml(): string {
   .case.passed{border-left:4px solid #1a7f37;padding-left:10px}
   .tag{display:inline-block;font-size:12px;padding:1px 8px;border-radius:10px;margin-left:8px;color:#fff}
   .tag.failed{background:#cf222e}.tag.passed{background:#1a7f37}
+  .tag.cat{background:#8250df}
+  .group{border-left:3px solid #d0d7de;margin:14px 0;padding-left:12px}
+  .group h3{margin:0 0 6px;font-size:14px}
+  .group .count{font-size:12px;color:#57606a}
   pre{background:#0d1117;color:#c9d1d9;padding:12px;border-radius:8px;overflow:auto;font-size:12px;max-height:300px}
   .error{margin-top:8px;color:#57606a;font-size:13px}
   .refresh{color:#57606a;font-size:12px;margin-bottom:8px}
+  .copy{float:right;font-size:12px;background:#0969da;color:#fff;border:none;border-radius:6px;padding:4px 10px;cursor:pointer}
+  .copy:hover{background:#0969da99}
 </style>
 </head>
 <body>
@@ -114,15 +120,45 @@ function render(d) {
     list.innerHTML = '<div class="card">全部通过</div>';
     return;
   }
+  // 按错误分类分组(定位/断言/网络/超时/脚本/其他)
+  const groups = {};
   for (const f of failures) {
-    const el = document.createElement('div');
-    el.className = 'case failed';
-    el.innerHTML = '<strong>' + (f.title||'(未命名)') + '</strong>' +
-      '<span class="tag failed">' + (f.category||'其他') + '</span>' +
-      (f.error && f.error !== '(无错误信息)' ? '<pre>' + escapeHtml(f.error) + '</pre>' : '') +
-      (f.stdout ? '<pre>' + escapeHtml(f.stdout) + '</pre>' : '');
-    list.appendChild(el);
+    const cat = f.category || '其他';
+    (groups[cat] = groups[cat] || []).push(f);
   }
+  for (const cat of Object.keys(groups)) {
+    const arr = groups[cat];
+    const g = document.createElement('div');
+    g.className = 'group';
+    g.innerHTML = '<h3>[' + cat + ']</h3><div class="count">' + arr.length + ' 条</div>';
+    for (const f of arr) {
+      const el = document.createElement('div');
+      el.className = 'case failed';
+      const copyBtn = '<button class="copy" onclick="copyBug(this)">复制缺陷模板</button>';
+      el.innerHTML = copyBtn +
+        '<strong>' + (f.title||'(未命名)') + '</strong>' +
+        '<span class="tag cat">' + (f.category||'其他') + '</span>' +
+        (f.error && f.error !== '(无错误信息)' ? '<pre>' + escapeHtml(f.error) + '</pre>' : '') +
+        (f.stdout ? '<pre>' + escapeHtml(f.stdout) + '</pre>' : '');
+      g.appendChild(el);
+    }
+    list.appendChild(g);
+  }
+}
+function copyBug(btn) {
+  const el = btn.parentElement;
+  const title = el.querySelector('strong') ? el.querySelector('strong').textContent : '(未命名)';
+  const cat = el.querySelector('.tag.cat') ? el.querySelector('.tag.cat').textContent : '';
+  const pre = el.querySelector('pre');
+  const err = pre ? pre.textContent : '';
+  const text =
+    '【缺陷】' + title + '\n' +
+    '【分类】' + cat + '\n' +
+    '【前置】\n【步骤】\n【实际】\n【预期】\n【错误信息】\n' + err;
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '已复制';
+    setTimeout(() => { btn.textContent = '复制缺陷模板'; }, 1500);
+  }).catch(() => {});
 }
 function escapeHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 load(); setInterval(load, 3000);

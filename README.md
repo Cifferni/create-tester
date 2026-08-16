@@ -17,6 +17,10 @@
 | 登录/验证码编排 | ❌ | 部分 | ✅ |
 | 环境可复跑 | ❌ | ✅ | ✅ `env_reset` |
 | 接口自动断言(免 waitForResponse) | ❌ | ❌ | ✅ `expectApi` |
+| 长链路传参(创建→查询→编辑) | ❌ | 部分 | ✅ `setVar`/`extractField` |
+| 选择器持久缓存 / 定位自愈 | ❌ | ❌ | ✅ `selfHeal` + 缓存 |
+| 弹窗/遮罩/登录失效全局防护 | ❌ | 部分 | ✅ 骨架自动注入 |
+| Shadow DOM 穿透定位 | ✅ | ✅ | ✅ `clickInShadow` 等 |
 | 测试人员零负担(只聊天) | ❌(面向开发者) | 中 | ✅ |
 | 成本 | 免费 | 订阅制 | 免费 |
 
@@ -68,6 +72,18 @@ tester install-browsers       # 安装 Playwright 浏览器(postinstall 自动�
 
 > 所有命令支持 `--help`(如 `create-tester --help`、`tester mcp --help`)、`--version`。
 
+## 多环境 & CI/CD
+
+**多环境**:`playwright.config.ts` 顶部 `ENVS` 表维护各环境地址,跑 `tester run --env uat` 或 `TESTER_ENV=uat` 自动切换被测地址(显式 `BASE_URL` 永远最高优先级)。账号密码走 `tests/_login.ts` + `TESTER_ACCOUNT`。
+
+```bash
+tester run --env test             # 跑 test 环境
+tester run --env uat --workers 4  # 跑 uat 环境、4 并行
+tester run --grep @smoke          # 只跑冒烟标签
+```
+
+**CI/CD**:`tester run` 退出码按结果(0=全通过,1=有失败),流水线可直接判红。模板自带 `ci.example.yml`(GitHub Actions 示例:装依赖 → 装浏览器 → 跑回归 → 传报告),复制为 `.github/workflows/regression.yml` 并配好 Secrets 即可;Jenkins/其他流水线同理,核心就是 `npx tester run --workers N`。
+
 ## 升级
 
 - **脚手架本身**:全局装的可 `npm i -g create-tester@latest`;用 `npm create`/`npx` 的每次都自动用最新版,不用手动升。
@@ -101,7 +117,31 @@ test('登录成功', async ({ page }) => {
 });
 ```
 
-`@create-tester/core` 还提供:智能等待(`waitForVisible`/`waitForClickable`/`waitForText`/`waitForURL`,替代硬编码延时)、字段断言扩展(`matches`/`containsValue`/`between`)、自愈定位(`selfHeal`)、接口 Mock/篡改(`mockRoute`/`tamperResponse`)、数据驱动(`readDataRows`)。
+`@create-tester/core` 还提供:
+- **智能等待** `waitForVisible`/`waitForClickable`/`waitForText`/`waitForURL`,替代硬编码延时
+- **字段断言扩展** `matches`/`containsValue`/`between`
+- **自愈定位 + 持久缓存** `selfHeal` 命中后写入 `test-result/locator-cache.json`,下次同页直接读缓存不重复探测(`TESTER_LOCATOR_CACHE=0` 关闭);`tester_cache_stats` 看命中率
+- **跨用例变量系统** `setVar`/`getVar`/`extractField`,支撑「创建→查询→编辑」长链路(用例A提取 orderId,用例B复用)
+- **全局防护** `installPageGuard`(弹窗自动 accept)/`waitMaskGone`(loading 遮罩)/`isLoggedOut`(登录失效检测),骨架自动注入
+- **Shadow DOM 适配** `clickInShadow`/`fillInShadow`/`hasTextInShadow`,递归穿透 open shadowRoot(中后台组件库)
+- **VLM 视觉降级兜底**(可选):语义定位全失败时自动降级视觉模型按坐标定位,成功后反哺选择器缓存(`plugin/vlm.example.cjs` 接自家视觉模型)
+- **接口 Mock/篡改** `mockRoute`/`tamperResponse`、**数据驱动** `readDataRows`、**条件分支** DSL「若变量xx则点击yy」
+
+长链路传参示例:
+
+```ts
+import { apiRecorder, extractField, setVar, getVar } from '@create-tester/core';
+
+test('创建订单', async ({ page }) => {
+  const api = apiRecorder(page);
+  // ... 提交订单 ...
+  await setVar('orderId', await extractField(api, '/order/create', 'data.orderId'));
+});
+
+test('查询订单', async ({ page }) => {
+  await page.getByTestId('order-input').fill(await getVar('orderId'));
+});
+```
 
 ## MCP 工具(双 server)
 
@@ -124,7 +164,11 @@ test('登录成功', async ({ page }) => {
 | `tester_status` | 读报告,返回通过/失败/跳过/耗时总览 |
 | `tester_failures` | 读报告,返回全貌 + 失败详情(含**错误分类**定位/断言/网络/超时/脚本/其他 + stdout/stderr) |
 | `tester_retry_failed` | 只重跑上次失败的 spec(支持 grep 筛选) |
-| `tester_generate_spec` | 按 test-cases/ 用例生成 spec 骨架(含 apiRecorder + 业务断言模板) |
+| `tester_generate_spec` | 按 test-cases/ 用例生成 spec 骨架(含 apiRecorder + 业务断言模板 + 弹窗防护) |
+| `tester_cache_stats` | 查看选择器持久缓存命中率(条目/命中/失效/命中率,评估定位质量与 Token 节省) |
+| `tester_vars` | 查看当前跨用例变量(setVar/getVar,排查长链路传参) |
+| `tester_api_request` | 纯接口请求(不经过页面,造数据/取数用);`extract` 把响应字段写入变量供 UI 用例断言,实现「接口造数据 + UI 断言」混合测试 |
+| `tester_export_doc` | 导出标准测试文档:spec + 执行结果 → Markdown(test-result/exported-cases.md),供缺陷单/报告归档 |
 | `tester_env_reset` | 执行工程 `mcp/env-reset.cjs` 还原环境(跑会改数据的回归前调用) |
 
 ## 生成的测试项目
@@ -141,20 +185,41 @@ my-test/
 │   ├── playwright-mcp.json  官方 @playwright/mcp 配置文件
 │   └── env-reset.cjs 环境清理钩子(项目按应用实现)
 ├── scripts/login.cjs 人工登录(验证码场景;支持 TESTER_ACCOUNT 多账号)
-├── playwright.config.ts  被测地址 + 浏览器 + 报告 + storageState 配置
+├── playwright.config.ts  被测地址 + 浏览器 + 报告 + storageState 配置(ENVS 多环境表)
+├── ci.example.yml        CI 示例(GitHub Actions:装依赖/装浏览器/跑回归/传报告)
 ├── .mcp.json         双 MCP server 配置(playwright 官方 + tester)
 ├── AGENTS.md          给 AI 的工作规范(双 server 分工/断言纪律/等待纪律/选择器优先级)
 ├── README.md          测试人员使用引导
-└── test-result/      所有输出:report/(HTML 报告)、test-results.json、auth-<account>.json、output/(截图/trace/视频)
+└── test-result/      所有输出:report/(HTML 报告)、test-results.json、auth-<account>.json、locator-cache.json(选择器缓存)、.vars.json(跨用例变量)、output/(截图/trace/视频)
 ```
 
-## 配置(无配置文件,环境变量)
+## 配置(唯一配置源 playwright.config.ts,环境变量可覆盖)
 
-| 环境变量 | 说明 |
-| --- | --- |
-| `BASE_URL` | 被测页面地址(默认 `http://localhost:3000`;对话里说地址 AI 会用 set_base_url 改) |
-| `TESTER_BROWSER` | 浏览器:chromium / chrome / firefox / webkit |
-| `TESTER_ACCOUNT` | 账号(默认 default;多账号隔离时用,如 `TESTER_ACCOUNT=admin` 切第二个账号) |
+项目**没有额外配置文件**:配置写在生成的 `playwright.config.ts` 里(顶部 `testerConfig` 对象),环境变量可覆盖(优先级 **env > testerConfig > 默认**)。测试人员不碰配置——地址/账号在对话里说,AI 用 `tester_set_base_url` 等工具改文件。
+
+`playwright.config.ts` 顶部 `testerConfig`:
+
+```ts
+export const testerConfig = {
+  envs: { test: 'http://localhost:3000', uat: 'http://uat.xx.com' }, // 多环境地址表
+  switches: { locatorCache: true, vars: true },  // 选择器缓存 / 跨用例变量
+  retry: { maxRounds: 2, retryable: ['定位', '网络', '超时'] }, // 失败自动重试
+  vlm: { enabled: false }  // VLM 视觉降级兜底
+};
+```
+
+环境变量(覆盖或 CI 注入):
+
+| 环境变量 | 覆盖项 | 说明 |
+| --- | --- | --- |
+| `BASE_URL` | 被测地址 | 最高优先级,覆盖 ENVS |
+| `TESTER_ENV` | 环境名 | 命中 `envs` 表自动切地址 |
+| `TESTER_BROWSER` | 浏览器 | chromium / chrome / firefox / webkit |
+| `TESTER_ACCOUNT` | 账号 | 多账号隔离(auth-<account>.json) |
+| `TESTER_LOCATOR_CACHE` | `switches.locatorCache` | `0` 关闭选择器缓存 |
+| `TESTER_VARS` | `switches.vars` | `0` 关闭变量全局落盘 |
+
+用 `tester_config` 工具可只读查看当前生效的配置与开关(排查"缓存为什么没生效"等)。
 
 ## 开发
 

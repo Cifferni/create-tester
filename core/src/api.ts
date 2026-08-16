@@ -4,6 +4,8 @@
 
 import { type Page, type Locator, expect as pwExpect } from '@playwright/test';
 import type { CapturedApi } from './types';
+import { locatorCacheKey, getCachedSelector, recordCacheHit, recordCacheMiss, recordVlmUse, type LocatorMethod } from './selectorCache';
+import { resolveVlm } from './vlm';
 
 const SKIP_URL = /\.(js|css|png|jpg|jpeg|gif|svg|ico|woff2?|ttf|eot|map)(\?|$)/i;
 const SKIP_PROTO = /^(data:|blob:)/i;
@@ -230,6 +232,14 @@ export async function expectApi(
   return assertion;
 }
 
+// 等待并提取接口字段:如 extractField(api, '/api/order/create', 'data.orderId')
+// 与 expectApi 同一套"按 URL 关键字找响应"逻辑,但把结果抽出来给变量系统用(setVar 后跨用例传递)。
+export async function extractField(logs: CapturedApi[], urlKeyword: string, dotPath: string, opts: { timeout?: number } = {}): Promise<string> {
+  const a = await expectApi(logs, urlKeyword, { timeout: opts.timeout });
+  const v = a.field(dotPath).value();
+  return v === undefined || v === null ? '' : String(v);
+}
+
 // ── 智能等待(替代硬编码 waitForTimeout)──────────────
 // 全部基于 Playwright 原生自动等待(内置轮询 + 超时),禁止 AI 生成 page.waitForTimeout(硬编码延时,
 // 机器慢/网络抖就崩,快就白等)。等的是"状态",不是"时间"。
@@ -258,43 +268,113 @@ export async function waitForURL(page: Page, url: string | RegExp, opts: { timeo
   await pwExpect(page).toHaveURL(url, { timeout });
 }
 
-// ── 用例自愈(定位失败兜底) ──
-// 当首选选择器定位失败时,用备选策略(text / testid / role / css)自动重试,减少文案/结构微调导致的大面积失效。
+// ── 用例自愈(定位失败兜底 + 选择器持久缓存) ──
+// 当首选选择器定位失败时,用备选策略(text / testid / css)自动重试,减少文案/结构微调导致的大面积失效。
+// 命中后会持久化到 test-result/locator-cache.json:下次运行同页面同候选,优先读缓存直接定位(快路径,
+// 不再重复探测),只有缓存失效才回到多候选探测。用 TESTER_LOCATOR_CACHE=0 可关闭缓存。
 // 用法: const loc = await selfHeal(page, ['save-btn', '保存', 'button:has-text("保存")']); await loc.click();
-//   —— 按顺序探测每个候选,返回第一个在页面上真实存在的 locator。
 
 export interface SelfHealOptions {
   /** 每个候选的探测超时,缺省 2000ms(命中即可,不用太长) */
   timeout?: number;
 }
 
+// 按缓存 method 重建 locator
+function locatorForMethod(page: Page, method: LocatorMethod, selector: string): Locator {
+  switch (method) {
+    case 'css':
+      return page.locator(selector);
+    case 'testid':
+      return page.getByTestId(selector);
+    case 'text-exact':
+      return page.getByText(selector, { exact: true }).first();
+    default:
+      return page.locator(`text=${selector}`).first();
+  }
+}
+
+interface ProbeHit {
+  locator: Locator;
+  method: LocatorMethod;
+  selector: string;
+}
+
+// 探测单个候选串:按 testid → 文本(精确) → 文本(模糊) 顺序试,返回第一个命中的;CSS 形态只试 CSS。
+function probeCandidate(page: Page, c: string): ProbeHit[] {
+  const looksCss = /[#.\[\]]/.test(c) && !/[^\w\u4e00-\u9fa5-#.\[\]()>+~ :*="']/.test(c);
+  if (looksCss) {
+    return [{ locator: page.locator(c), method: 'css', selector: c }];
+  }
+  return [
+    { locator: page.getByTestId(c), method: 'testid', selector: c },
+    { locator: page.getByText(c, { exact: true }).first(), method: 'text-exact', selector: c },
+    { locator: page.locator(`text=${c}`).first(), method: 'text', selector: c }
+  ];
+}
+
 /**
  * 探测候选定位器,返回第一个在页面上存在的。全部不存在时抛错并列出诊断。
- * candidates 每项:string 会自动尝试 testid → 文本 → CSS;也可直接传 Locator 或 { role, name }。
+ * 命中后持久化缓存,下次运行优先用缓存(见 selectorCache)。
+ * candidates 每项:string 会自动尝试 testid → 文本 → CSS。
  * 命中后返回的 locator 后续 click/fill 由 Playwright 自动等待接管,不额外加硬延时。
  */
 export async function selfHeal(page: Page, candidates: string[], opts: SelfHealOptions = {}): Promise<Locator> {
   const { timeout = 2000 } = opts;
   const failures: string[] = [];
+  // 缓存快路径:同页面同候选,直接用上次命中的选择器定位
+  const key = locatorCacheKey(page.url(), candidates);
+  const cached = getCachedSelector(key);
+  if (cached) {
+    try {
+      const loc = locatorForMethod(page, cached.method, cached.selector);
+      if ((await loc.count()) > 0) {
+        recordCacheHit(key, { selector: cached.selector, method: cached.method });
+        return loc.first();
+      }
+      failures.push(`缓存"${cached.selector}"(失效)`);
+    } catch {
+      failures.push(`缓存"${cached.selector}"(无效)`);
+    }
+  }
+  // 慢路径:按顺序探测每个候选
   for (const c of candidates) {
-    const looksCss = /[#.\[\]]/.test(c) && !/[^\w\u4e00-\u9fa5-#.\[\]()>+~ :*="']/.test(c);
-    const pool: Locator[] = looksCss
-      ? [page.locator(c)]
-      : [page.getByTestId(c), page.getByText(c, { exact: true }).first(), page.locator(`text=${c}`).first()];
-    for (const loc of pool) {
+    for (const hit of probeCandidate(page, c)) {
       try {
-        const n = await loc.count();
-        if (n > 0) return loc.first();
+        const n = await hit.locator.count();
+        if (n > 0) {
+          recordCacheHit(key, { selector: hit.selector, method: hit.method });
+          return hit.locator.first();
+        }
         failures.push(`"${c}"(无匹配)`);
       } catch {
         failures.push(`"${c}"(无效)`);
       }
     }
   }
+  // 缓存条目这次没派上用场:累计失效,超阈值自动剔除(见 selectorCache.recordCacheMiss)
+  if (cached) recordCacheMiss(key);
+  // VLM 视觉降级兜底:工程 plugin/ 配了 type:'locatorVlm' 插件时才启用(默认关)。
+  // 成功后把"坐标命中的真实元素"反哺为选择器缓存,下次直接命中,避免重复调视觉模型。
+  const vlm = await resolveVlm(page, candidates[0] || '').catch(() => null);
+  if (vlm) {
+    recordVlmUse();
+    try {
+      const loc = page.locator(vlm.selector);
+      if ((await loc.count()) > 0) {
+        recordCacheHit(key, { selector: vlm.selector, method: 'css' });
+        return loc.first();
+      }
+    } catch {
+      // 反哺选择器不可用,退回报错
+    }
+    failures.push(`VLM 兜底"${vlm.selector}"(未命中)`);
+  }
   throw new Error(
     `自愈定位失败:候选 ${candidates.join(' | ')} 都未命中页面元素。\n` +
     `已尝试:${failures.join(', ')}\n` +
-    `建议:用 browser_snapshot 看当前页面实际结构,修正选择器。`
+    `建议:用 browser_snapshot 看当前页面实际结构,修正选择器。\n` +
+    `若元素在 Shadow DOM 内:用 clickInShadow(page, '文案') / fillInShadow(page, '标签', '值') 穿透定位。\n` +
+    (vlm ? `VLM 已降级尝试但未命中(${vlm.plugin});请检查目标描述或视觉插件配置。` : '若配置了 VLM 视觉插件(plugin/*.cjs 的 locatorVlm),语义失败会自动降级。')
   );
 }
 

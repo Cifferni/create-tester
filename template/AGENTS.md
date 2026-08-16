@@ -12,7 +12,7 @@
 ## 工具(两套 MCP)
 
 **tester**(测试工程,前缀 `tester_`):
-`tester_convert_case`(用例→文本)、`tester_generate_spec`(用例→**DSL 自动生成**操作+断言的 spec,AI 只核对选择器)、`tester_run_tests`(后台跑测,支持 grep/语法+纪律预检)、`tester_run_and_wait`(同步跑+等结果,定位/网络/超时自动重试)、`tester_wait_result`(等结果,一次调用)、`tester_status`/`tester_failures`(总览/失败详情含错误分类)、`tester_retry_failed`(重跑失败)、`tester_list_cases`/`tester_list_specs`(列文件)、`tester_set_base_url`(改地址)、`tester_login`/`tester_login_status`(人工登录)、`tester_env_reset`(还原环境)。
+`tester_convert_case`(用例→文本)、`tester_generate_spec`(用例→**DSL 自动生成**操作+断言的 spec,AI 只核对选择器)、`tester_run_tests`(后台跑测,支持 grep/语法+纪律预检)、`tester_run_and_wait`(同步跑+等结果,定位/网络/超时自动重试)、`tester_wait_result`(等结果,一次调用)、`tester_status`/`tester_failures`(总览/失败详情含错误分类)、`tester_retry_failed`(重跑失败)、`tester_list_cases`/`tester_list_specs`(列文件)、`tester_set_base_url`(改地址)、`tester_login`/`tester_login_status`(人工登录)、`tester_env_reset`(还原环境)、`tester_cache_stats`(选择器缓存命中率)、`tester_vars`(跨用例变量)、`tester_api_request`(纯接口造数据)、`tester_export_doc`(导出用例文档)、`tester_config`(查看当前生效配置/开关)。
 
 **playwright**(官方,页面操作):
 `browser_snapshot`(看结构)、`browser_find`(搜文本)、`browser_click`/`browser_type`/`browser_navigate`/`browser_expect`(操作断言)、`browser_network_requests`(抓接口)、`browser_route`(mock)。
@@ -28,8 +28,12 @@
 ## 写用例要点
 
 - 接口断言 `expectApi`(code/字段/状态码),页面断言 `toHaveURL`/`toHaveText`/`toHaveClass`;字段断言按形态选 equals/contains/containsValue/notEmpty/matches/between。
+- 长链路传参:用例A用 `extractField(api,'/order/create','data.orderId')` 提取 + `setVar('orderId', ...)`,用例B用 `getVar('orderId')` 消费(创建→查询→编辑);跑测前自动清空上一轮变量。
+- 条件分支:DSL 支持「若变量xx则点击yy」,生成 `if (await getVar('xx')) { ... }`;页面弹窗由骨架自动注入 `installPageGuard`(自动 accept),点击被遮罩挡住时先 `waitMaskGone(page)`。
 - 数据驱动:`data.csv` 表头 + `readDataRows` 顶层 `for...of`,别硬编码。
-- 定位不稳:`selfHeal(page, ['testid','文本','css'])` 多候选。
+- 定位不稳:`selfHeal(page, ['testid','文本','css'])` 多候选。命中后自动写入选择器缓存(`test-result/locator-cache.json`),下次同页直接读缓存不重复探测;可用 `tester_cache_stats` 看命中率,命中率低=选择器质量差或页面常变。
+- Shadow DOM 组件定位失败:用 `clickInShadow(page,'文案')`/`fillInShadow(page,'标签','值')` 穿透 shadowRoot(仅 open shadowRoot,中后台组件库常见)。
+- 视觉降级(可选):工程 plugin/ 放 `type:'locatorVlm'` 插件后,语义定位(selfHeal 多候选)全失败会自动降级视觉按坐标定位,成功后反哺选择器缓存;`tester_cache_stats` 可看降级次数。
 - 接口 mock:`mockRoute`/`tamperResponse`;真回归验证真实后端不用 mock(否则假绿)。
 - 改数据用例:造数据+自清理,判断增删用计数对比,别靠名字唯一。
 

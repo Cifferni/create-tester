@@ -168,7 +168,7 @@ function writePackageJson(target: string, name: string, browser: string, extras:
     private: true,
     scripts,
     devDependencies: {
-      '@create-tester/core': '^0.6.4',
+      '@create-tester/core': '^0.7.0',
       '@playwright/mcp': '^0.0.79',
       '@playwright/test': PLAYWRIGHT_TEST_VERSION,
       playwright: '^1.49.1',

@@ -19,8 +19,11 @@ import { checkSpecQuality } from './checkSyntax';
 import { closeBrowser } from './browser';
 import { loadPlugins } from './plugins';
 import { playwrightConfig } from './config';
+import { effectiveTesterConfig, testerConfig as readTesterConfig } from './config';
 import { parseCaseToDsl, dslToCode, dslToAssertions } from './dsl';
 import { startPlaywrightTest, runPlaywrightTest, runWithRetry, summarizeJsonReport, failedSpecFiles } from './playwright';
+import { locatorCacheStats } from './selectorCache';
+import { listVars, resetVars, setVar } from './variables';
 
 // 包版本:通过包名解析到安装位置的 package.json(避开 esbuild 内联相对路径的坑)
 function coreVersion(): string {
@@ -237,6 +240,8 @@ function runMCP(): void {
             (warnings.length ? `\n\n(警告,不阻塞运行):\n${warnings.join('\n')}` : '')
         );
       }
+      // 跑测前清空上一轮残留变量,避免污染本次(跨用例传参从干净状态开始)
+      resetVars();
       // 清掉旧报告:让 tester_status/tester_failures 的"未找到报告"能区分"还在跑"
       try {
         fs.rmSync(path.join(root, 'test-result', 'test-results.json'), { force: true });
@@ -276,6 +281,7 @@ function runMCP(): void {
       if (fatalIssues.length) {
         return textResult(`以下 spec 存在问题,已停止运行:\n\n${fatalIssues.join('\n\n')}`);
       }
+      resetVars();
       try {
         fs.rmSync(path.join(root, 'test-result', 'test-results.json'), { force: true });
       } catch {}
@@ -445,6 +451,116 @@ function runMCP(): void {
   );
 
   server.tool(
+    'tester_vars',
+    '查看当前测试变量(跨用例传参,test-result/.vars.json + 局部内存):setVar/getVar 支撑"用例A创建订单提取 orderId → 用例B用 orderId 查询/编辑"的长链路。跑测前会清空上一轮残留变量',
+    {},
+    () => {
+      const vars = listVars();
+      const entries = Object.entries(vars);
+      return textResult(
+        entries.length ? `当前变量(${entries.length}):\n${entries.map(([k, v]) => `  ${k} = ${v}`).join('\n')}` : '(无变量)'
+      );
+    }
+  );
+
+  server.tool(
+    'tester_config',
+    '查看当前生效的 tester 配置(playwright.config.ts 导出的 testerConfig + 环境变量覆盖后的最终值):开关(选择器缓存/变量落盘)/多环境地址表/重试策略/VLM 视觉降级。排查"为什么缓存没生效"等配置类问题时先看这里',
+    {},
+    () => {
+      const t = readTesterConfig();
+      const eff = effectiveTesterConfig();
+      const { baseURL } = playwrightConfig();
+      const envs = Object.entries(t.envs || {});
+      const retry = t.retry || {};
+      return textResult(
+        [
+          '当前 tester 配置(环境变量 > playwright.config.ts testerConfig > 默认):',
+          `  被测地址:${baseURL}(BASE_URL / ENVS / use.baseURL)`,
+          `  开关-选择器缓存:${eff.switchesResolved.locatorCache ? '开' : '关'}(TESTER_LOCATOR_CACHE 可覆盖)`,
+          `  开关-变量落盘:${eff.switchesResolved.vars ? '开' : '关'}(TESTER_VARS 可覆盖)`,
+          `  重试:${retry.maxRounds ?? 2} 轮,分类:${(retry.retryable || ['定位', '网络', '超时']).join('/')}`,
+          `  VLM 视觉降级:${eff.vlmResolved ? '开' : '关'}(配 plugin/ 的 locatorVlm 插件后可开)`,
+          envs.length ? `  多环境:${envs.map(([k, v]) => `${k}=${v}`).join(', ')}` : '  多环境:(未配置)'
+        ].join('\n')
+      );
+    }
+  );
+
+  server.tool(
+    'tester_api_request',
+    '纯接口请求(不经过页面,造数据/取数用):直接发 HTTP 请求,返回状态码与响应体;可用 extract 把响应字段写入变量(setVar),供后续 UI 用例断言页面展示。实现"接口造数据 + UI 断言"混合测试',
+    {
+      method: z.string().describe('HTTP 方法:GET/POST/PUT/DELETE 等'),
+      url: z.string().describe('完整请求地址,如 http://localhost:3000/api/order/create'),
+      headers: z.record(z.string(), z.string()).optional().describe('请求头(可选,如 { Authorization: "xxx" })'),
+      body: z.string().optional().describe('请求体(JSON 字符串或原始文本)'),
+      extract: z.array(z.object({
+        name: z.string().describe('写入变量名,如 orderId'),
+        path: z.string().describe('响应字段 dotPath,如 data.orderId')
+      })).optional().describe('把响应字段提取成变量(供 UI 用例用 setVar/getVar)')
+    },
+    async ({ method, url, headers, body, extract }) => {
+      try {
+        const res = await fetch(url, {
+          method,
+          headers: headers ? { 'content-type': 'application/json', ...headers } : { 'content-type': 'application/json' },
+          body: method !== 'GET' && method !== 'HEAD' && body !== undefined ? body : undefined
+        });
+        const raw = await res.text();
+        const out: string[] = [`${method} ${url} → HTTP ${res.status}`];
+        // 提取字段写入变量
+        const saved: string[] = [];
+        if (extract?.length) {
+          let json: unknown = null;
+          try {
+            json = JSON.parse(raw);
+          } catch {
+            // 非 JSON 响应则跳过提取
+          }
+          if (json) {
+            const get = (dot: string): unknown =>
+              dot.split('.').reduce<unknown>((o, k) => (o == null ? o : (o as Record<string, unknown>)[k]), json);
+            for (const e of extract) {
+              const v = get(e.path);
+              if (v !== undefined && v !== null) {
+                setVar(e.name, String(v));
+                saved.push(`${e.name}=${String(v)}`);
+              }
+            }
+          }
+        }
+        out.push(saved.length ? `已提取变量:${saved.join(' | ')}` : '');
+        out.push(`响应体(截断 2000 字):\n${raw.slice(0, 2000)}`);
+        return textResult(out.filter(Boolean).join('\n'));
+      } catch (e) {
+        return textResult(`接口请求失败:${(e as Error).message}`);
+      }
+    }
+  );
+
+  server.tool(
+    'tester_cache_stats',
+    '查看选择器持久缓存(test-result/locator-cache.json)的命中率统计:缓存条目数/累计命中/累计失效/命中率。selfHeal 定位命中后会写入缓存,重复运行同用例应看到命中率上升、Token 定位开销下降;命中率低说明页面结构经常变,或选择器质量差',
+    {},
+    () => {
+      const s = locatorCacheStats();
+      return textResult(
+        s.disabled
+          ? '选择器缓存已关闭(设置了 TESTER_LOCATOR_CACHE=0)'
+          : [
+              `选择器缓存统计:`,
+              `  缓存条目:${s.total}`,
+              `  累计命中:${s.hits}`,
+              `  累计失效:${s.misses}`,
+              `  命中率:${(s.hitRate * 100).toFixed(1)}%`,
+              `  VLM 视觉降级:${s.vlmUses} 次`
+            ].join('\n')
+      );
+    }
+  );
+
+  server.tool(
     'tester_generate_spec',
     '根据 test-cases/ 下的用例文件生成 Playwright spec:先用 DSL 解析(操作→可执行步骤,预期→断言),生成带操作/断言的完整代码(选择器用 selfHeal 多候选占位),AI 只需核对/微调选择器,不用从空白骨架补。写到 tests/<feature>/',
     {
@@ -479,7 +595,7 @@ function runMCP(): void {
       const opBody = ops.length ? ops.join('\n') : `  // ⚠ 未识别到"操作"步骤,请用 browser_snapshot 看结构后补操作`;
       const assertBody = asserts.join('\n');
       const skeleton = `import { test, expect } from '@playwright/test';
-import { apiRecorder, expectApi, waitForVisible, waitForClickable, waitForText, waitForURL, selfHeal, mockRoute, tamperResponse } from '@create-tester/core';
+import { apiRecorder, expectApi, waitForVisible, waitForClickable, waitForText, waitForURL, selfHeal, mockRoute, tamperResponse, extractField, setVar, getVar, installPageGuard, waitMaskGone } from '@create-tester/core';
 
 // 用例来源: ${caseRef}
 ${guide}
@@ -490,6 +606,7 @@ ${guide}
 
 test('${firstMeaningfulLine(text) || base}', async ({ page }) => {
   const api = apiRecorder(page);
+  installPageGuard(page); // 弹窗自动 accept,防弹窗卡死/误断用例
 ${goto}
 
   // ── 操作(DSL 自动生成,核对 selfHeal 候选) ──
@@ -501,6 +618,81 @@ ${assertBody}
 `;
       fs.writeFileSync(targetFile, skeleton, 'utf8');
       return textResult(`已生成:${targetFile}\n操作/断言已由用例自动生成(DSL),用 browser_snapshot 看页面结构核对 selfHeal 选择器,然后 tester_run_tests`);
+    }
+  );
+
+  server.tool(
+    'tester_export_doc',
+    '导出标准测试文档:把 tests/ 下的 spec(用例标题 + 操作/断言步骤)+ 最近一次执行结果(test-result/test-results.json 的通过/失败/跳过)汇总成 Markdown,写到 test-result/exported-cases.md。供缺陷单、测试报告归档用',
+    {
+      out: z.string().optional().describe('输出文件路径,缺省 test-result/exported-cases.md')
+    },
+    ({ out }) => {
+      const root = projectRoot();
+      const specFiles = defaultSpecFiles();
+      if (!specFiles.length) return textResult('tests/ 下没有 spec,无法导出');
+      // 读最近执行结果(可能没有)
+      const reportFile = path.join(root, 'test-result', 'test-results.json');
+      let report: { suites?: unknown[] } | null = null;
+      try {
+        report = fs.existsSync(reportFile) ? (JSON.parse(fs.readFileSync(reportFile, 'utf8')) as { suites?: unknown[] }) : null;
+      } catch {
+        report = null;
+      }
+      const statusOf = new Map<string, string>();
+      const walk = (suites: unknown[]): void => {
+        for (const s of suites as Array<{ title?: string; suites?: unknown[]; specs?: unknown[] }>) {
+          if (s.suites?.length) walk(s.suites);
+          for (const spec of s.specs || []) {
+            const sp = spec as { title?: string; tests?: Array<{ title?: string; results?: Array<{ status?: string }> }> };
+            for (const t of sp.tests || []) {
+              const st = t.results?.[t.results.length - 1]?.status;
+              statusOf.set(sp.title || t.title || '', st || 'unknown');
+            }
+          }
+        }
+      };
+      if (report?.suites?.length) walk(report.suites);
+      // 按 spec 文件分组渲染
+      const md: string[] = ['# 测试用例文档', '', `> 导出时间:${new Date().toISOString()}`, `> 来源:${specFiles.length} 个 spec 文件`, ''];
+      const STATUS_EMOJI: Record<string, string> = { passed: '✅', failed: '❌', skipped: '⏭', timedOut: '⏱', unknown: '?' };
+      for (const file of specFiles) {
+        let src = '';
+        try {
+          src = fs.readFileSync(file, 'utf8');
+        } catch {
+          continue;
+        }
+        const rel = path.relative(root, file).replace(/\\/g, '/');
+        md.push(`## ${rel}`, '');
+        // 提取 test('标题', ...) 块
+        const re = /test\s*\(\s*['"`]([^'"`]+)['"`]/g;
+        let m: RegExpExecArray | null;
+        const titles: string[] = [];
+        while ((m = re.exec(src))) titles.push(m[1]);
+        if (!titles.length) {
+          md.push('_(未识别到用例,请人工补录)_', '');
+          continue;
+        }
+        for (const t of titles) {
+          const st = statusOf.get(t) || 'unknown';
+          md.push(`- ${STATUS_EMOJI[st] ?? '?'} **${t}**(状态:${st === 'unknown' ? '未执行' : st})`);
+        }
+        // 抽样展示 spec 中的断言/操作行(去注释,取前若干)
+        const lines = src
+          .split(/\r?\n/)
+          .map((l) => l.trim())
+          .filter((l) => l && !l.startsWith('//') && !l.startsWith('import') && !l.startsWith('export'))
+          .slice(0, 20);
+        if (lines.length) {
+          md.push('', '```ts', ...lines.slice(0, 12), '```');
+        }
+        md.push('');
+      }
+      const outFile = cwdResolve(out || 'test-result/exported-cases.md');
+      fs.mkdirSync(path.dirname(outFile), { recursive: true });
+      fs.writeFileSync(outFile, md.join('\n'), 'utf8');
+      return textResult(`已导出:${outFile}\n共 ${specFiles.length} 个 spec,可用表格/缺陷单归档`);
     }
   );
 

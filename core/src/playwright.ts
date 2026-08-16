@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import type { TestFailure } from './types';
+import { testerConfig } from './config';
 
 // 优先从工程目录(cwd)解析 @playwright/test CLI:
 // 让 server 用工程自己的那份 @playwright/test(spec 也导入它,保证同一份,避免"两个版本"冲突)。
@@ -210,10 +211,10 @@ export function failedSpecFiles(raw: string): string[] {
 }
 
 // 透传跑测试(不解析,直接继承 IO),返回退出码
-export async function runPlaywrightTestPassthrough(files: string[], cwd: string): Promise<number> {
+export async function runPlaywrightTestPassthrough(files: string[], cwd: string, extraArgs: string[] = []): Promise<number> {
   const cli = playwrightTestCli(cwd);
   if (!cli) throw new Error('未找到 @playwright/test,请先 npm install');
-  const args = [cli, 'test', ...files];
+  const args = [cli, 'test', ...extraArgs, ...files];
   return await new Promise((resolve) => {
     // windowsHide:避免 Windows 跑测试弹控制台窗口
     const child = spawn(process.execPath, args, { cwd, stdio: 'inherit', windowsHide: true });
@@ -234,9 +235,13 @@ export async function runWithRetry(
   cwd: string,
   opts: RetryOptions = {}
 ): Promise<{ failures: TestFailure[]; attempts: number }> {
-  const { maxRounds = 2, timeoutMs = 180000 } = opts;
+  const cfgRetry = testerConfig().retry;
+  const maxRounds = opts.maxRounds ?? cfgRetry?.maxRounds ?? 2;
+  const RETRYABLE: FailureCategory[] = cfgRetry?.retryable?.length
+    ? cfgRetry.retryable
+    : (['定位', '网络', '超时'] as FailureCategory[]);
+  const timeoutMs = opts.timeoutMs ?? 180000;
   let attempts = 0;
-  const RETRYABLE: FailureCategory[] = ['定位', '网络', '超时'];
   for (let round = 0; round <= maxRounds; round++) {
     attempts++;
     const { failures } = await runPlaywrightTest(files, cwd, { timeoutMs });

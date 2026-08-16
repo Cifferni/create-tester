@@ -13,6 +13,8 @@ export type StepAction =
   | 'assert_url'
   | 'assert_element'
   | 'api'
+  | 'extract'
+  | 'if_var'
   | 'comment';
 
 export interface DslStep {
@@ -25,6 +27,12 @@ export interface DslStep {
   expect?: string;
   /** 动作类型 (click/fill/select 等解析时细化) */
   kind?: string;
+  /** 提取到变量名(extract 步骤用) */
+  to?: string;
+  /** 条件分支:变量名(if_var 用) */
+  condVar?: string;
+  /** 条件分支:满足时执行的动作子句(if_var 用) */
+  then?: string;
 }
 
 export interface CaseDsl {
@@ -60,7 +68,11 @@ function parseActionLine(op: string): DslStep[] {
     .filter(Boolean);
   const steps: DslStep[] = [];
   for (const c of clauses) {
-    if (/^(打开|进入|访问|前往)/.test(c)) {
+    // 条件分支:若变量orderId不为空则点击查询 / 若 orderId 存在则输入到查询框
+    const ifMatch = c.match(/^(若|如果|if)\s*(?:变量)?\s*([\w.]+)\s*(?:不?(?:为空|为真|存在|非空|为空))?\s*(?:则|就)?\s*(.+)$/i);
+    if (ifMatch) {
+      steps.push({ action: 'if_var', condVar: ifMatch[2], then: ifMatch[3], kind: 'if' });
+    } else if (/^(打开|进入|访问|前往)/.test(c)) {
       const url = c.replace(/^(打开|进入|访问|前往)/, '').replace(/^['"]|['"]$/g, '').trim();
       steps.push({ action: 'goto', target: url || '/' });
     } else if (/^点击/.test(c)) {
@@ -75,6 +87,16 @@ function parseActionLine(op: string): DslStep[] {
       steps.push({ action: 'wait', expect: c.replace(/^(等待|等)/, '').trim(), kind: 'wait' });
     } else if (/^(断言|验证|校验|确认|检查)/.test(c)) {
       steps.push({ action: 'assert_text', expect: c.replace(/^(断言|验证|校验|确认|检查)/, '').trim(), kind: 'assert' });
+    } else if (/^(提取|保存|记录)/.test(c)) {
+      // 提取接口字段到变量:提取接口/order/create 的 data.orderId 到 orderId
+      const m = c.match(/^(提取|保存|记录)[^\d]*?\/([^\s，,的]+)[^的]*?的\s*([\w.[\]]+)\s*到\s*([\w.]+)/);
+      const m2 = c.match(/^(提取|保存|记录)[^的]*?的\s*([\w.[\]]+)\s*到\s*([\w.]+)/);
+      const picked = m ?? m2;
+      if (picked) {
+        steps.push({ action: 'extract', target: picked[2] || '', expect: picked[picked === m ? 3 : 2], to: picked[picked === m ? 4 : 3], kind: 'extract' });
+      } else {
+        steps.push({ action: 'comment', expect: c });
+      }
     } else if (c) {
       steps.push({ action: 'comment', expect: c });
     }
@@ -134,6 +156,17 @@ export function dslToCode(dsl: CaseDsl): string {
       case 'assert_url':
         lines.push(`  await expect(page).toHaveURL(/${s.expect || '.*'}/);`);
         break;
+      case 'extract':
+        lines.push(
+          `  await setVar('${s.to || 'var'}', await extractField(api, '${s.target || ''}', '${s.expect || ''}')); // 提取 ${s.expect} → ${s.to}`
+        );
+        break;
+      case 'if_var': {
+        const sub = renderSubClause(s.then || '');
+        const indent = sub ? '\n' : '';
+        lines.push(`  if (await getVar('${s.condVar || ''}')) {${indent}${sub}${sub ? '\n' : ''}  } // 若 ${s.condVar} 则 ${s.then}`);
+        break;
+      }
       case 'comment':
         lines.push(`  // ${s.expect || ''}`);
         break;
@@ -142,6 +175,23 @@ export function dslToCode(dsl: CaseDsl): string {
     }
   }
   return lines.join('\n');
+}
+
+// 渲染 if 子句内部的单个动作(点击/输入),供 if_var 分支体使用
+function renderSubClause(clause: string): string {
+  const c = clause.trim();
+  if (/^点击/.test(c)) {
+    const target = c.replace(/^点击/, '').trim();
+    return `    await selfHeal(page, ['${target}']).then((el) => el.click());`;
+  }
+  if (/^(输入|填写|填入|填)/.test(c)) {
+    const p = parseFill(c);
+    return `    await selfHeal(page, ['${p.target}']).then((el) => el.fill('${p.value || ''}'));`;
+  }
+  if (/^等待/.test(c)) {
+    return `    await waitForText(page, '${c.replace(/^等待/, '').trim()}');`;
+  }
+  return `    // ${c}`;
 }
 
 // 从用例"预期"生成断言代码:URL 命中 → toHaveURL;文案 → toHaveText;接口关键字 → expectApi 占位。

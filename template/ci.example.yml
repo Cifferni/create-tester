@@ -1,0 +1,44 @@
+# 测试工程接入 CI 示例(GitHub Actions)
+# 用法:把这个文件复制为 .github/workflows/regression.yml,配置好被测环境与账号后 push 即可。
+# 关键点:
+#   - 被测环境通过 env 注入 BASE_URL / TESTER_ENV(多环境表在 playwright.config.ts 的 ENVS)
+#   - 账号密码放 GitHub Secrets(TESTER_ACCOUNT / TESTER_PASSWORD),别写死在文件里
+#   - auth.setup 用 storageState 登录一次,验证码场景需先人工登录导出 auth-<account>.json 或接 UI 测试
+#   - 退出码:全部通过=0,有失败=1,流水线自动判红
+
+name: regression
+
+on:
+  push:
+    branches: [main]
+  schedule:
+    - cron: '0 22 * * *' # 每天 6:00(UTC+8)跑一次定时回归
+  workflow_dispatch: {}
+
+jobs:
+  test:
+    name: 回归
+    runs-on: ubuntu-latest
+    env:
+      BASE_URL: ${{ secrets.BASE_URL }}
+      TESTER_ENV: ${{ vars.TESTER_ENV }}
+      TESTER_ACCOUNT: ${{ vars.TESTER_ACCOUNT || 'default' }}
+      TESTER_PASSWORD: ${{ secrets.TESTER_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - name: 跑回归
+        run: npx tester run --workers 4
+        continue-on-error: false
+      - name: 上传报告
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: test-result/
+          retention-days: 14
