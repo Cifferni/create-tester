@@ -2,9 +2,8 @@
 // 作用:语义定位(selfHeal 多候选)全部失败时,自动降级用视觉模型按坐标定位,成功后反哺选择器缓存。
 // 使用:
 //   1) 本文件复制为 plugin/vlm.cjs
-//   2) tester.config.ts 里填好 vlm.model / vlm.apiUrl / vlm.apiKey(或环境变量 TESTER_VLM_API_KEY)
-//   3) tester.config.ts 里 vlm.enabled 改成 true
-// 说明:模型地址/key 统一在 tester.config.ts 填,这里的代码直接用就行,不需要再改。
+//   2) 在 .env.<环境> 文件里填 VLM 配置(TESTER_VLM_ENABLED=1 + TESTER_VLM_MODEL / TESTER_VLM_API_URL / TESTER_VLM_API_KEY)
+// 说明:模型地址/key 统一在当前环境的 .env.<环境> 里填,这里的代码直接用就行,不需要再改。
 
 // 兼容 OpenAI 风格的视觉模型接口(通义/GLM/GPT 等大多支持):
 //   发截图 + 问"目标在页面什么坐标",模型返回 JSON,里面有个坐标文本。

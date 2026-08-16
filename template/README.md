@@ -191,11 +191,12 @@ test-result/   所有输出:报告、截图、视频、登录态、缓存
 - **其他 AI**:把「快速开始·第 2 步」那段配置说明复制粘贴给 AI,让它按自己的方式接入(面板/命令/config 都行,本质就是那两个 stdio server)
 - 兜底:`node <工程>/mcp/server.cjs`(tester)+ `npx @playwright/mcp@latest --config <工程>/mcp/playwright-mcp.json`(playwright)
 
-**2. 配置** — 集中在 `tester.config.ts`,按环境分组(每个环境一段完整配置:地址/浏览器/登录/VLM,每项有白话注释)
+**2. 配置** — 地址/浏览器/登录集中在 `tester.config.ts`,按环境分组(每个环境一段完整配置:地址/浏览器/登录,每项有白话注释)
 - 优先级:**环境变量 > 当前环境的配置(tester.config.ts) > 内置默认**
-- **每个环境一个 `.env.<环境>` 文件**(`.env.test` / `.env.uat` / `.env.prod` …),放该环境账号密码,已被 gitignore 排除(不进仓库)。脚手架创建工程时自动生成,你只填密码。
+- **每个环境一个 `.env.<环境>` 文件**(`.env.test` / `.env.uat` / `.env.prod` …),放该环境的敏感配置(账号密码、VLM 密钥),已被 gitignore 排除(不进仓库)。脚手架创建工程时自动生成,你只填值。
   - 缺省账号:`TESTER_USER` / `TESTER_PASSWORD`
   - 多账号:`TESTER_USER_<账号大写>` / `TESTER_PASSWORD_<账号大写>`(如 admin → `TESTER_USER_ADMIN`),跑时设 `TESTER_ACCOUNT=admin` 切换
+  - VLM 视觉兜底(可选):`TESTER_VLM_ENABLED` / `TESTER_VLM_MODEL` / `TESTER_VLM_API_URL` / `TESTER_VLM_API_KEY` / `TESTER_VLM_TIMEOUT`
 - 临时覆盖(不改文件):`BASE_URL` / `TESTER_ENV` / `TESTER_BROWSER` / `TESTER_LOGIN`
 
 **3. 多环境跑测试**
@@ -221,10 +222,10 @@ npx create-tester@latest upgrade
 - CI 里环境变量直接用 Secrets 注入,不落盘
 
 **5. VLM 视觉兜底(可选,默认关)**
-语义定位(找元素)全失败时,把截图发给"能看图的模型"按坐标点,适合 Canvas / 封闭组件。启用 3 步:
-1. `tester.config.ts` 对应环境的 `vlm.enabled: true`
-2. 填该环境 `vlm.model` / `vlm.apiUrl`;`apiKey` 用 `.env.<环境>` 的 `TESTER_VLM_API_KEY`(避免 key 进仓库)
-3. `plugin/` 放视觉插件(模板自带 `vlm.example.cjs`,复制改名 `vlm.cjs`)
+语义定位(找元素)全失败时,把截图发给"能看图的模型"按坐标点,适合 Canvas / 封闭组件。配置和密钥都在该环境的 `.env.<环境>` 里(不进仓库),启用 3 步:
+1. `.env.<环境>` 里 `TESTER_VLM_ENABLED=1`,并填 `TESTER_VLM_MODEL` / `TESTER_VLM_API_URL` / `TESTER_VLM_API_KEY`(超时可加 `TESTER_VLM_TIMEOUT`,默认 8 秒)
+2. `plugin/` 放视觉插件(模板自带 `vlm.example.cjs`,复制改名 `vlm.cjs`)
+3. 重启测试进程(AI 会话或 `npm run test`)使环境文件生效
 
 **6. 其他**
 - AI 工作规范见 `AGENTS.md`(双 server 分工 / 断言纪律 / 定位优先级)

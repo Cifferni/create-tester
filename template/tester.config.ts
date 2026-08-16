@@ -9,35 +9,31 @@ export const testerConfig = {
   //   baseURL   被测地址
   //   browser   浏览器(chromium/chrome/firefox/webkit),不写用全局 browser
   //   login     是否登录
-  //   vlm       视觉兜底配置(enabled/model/apiUrl/timeout),apiKey 走 .env.<环境> 的 TESTER_VLM_API_KEY
+  // 视觉兜底(VLM,可选):配置和 key 都在该环境的 .env.<环境> 文件里(TESTER_VLM_*),不进仓库。
   envs: {
     // 开发:本地+Chrome
     dev: {
       baseURL: 'http://localhost:5173',
       browser: 'chrome',
-      login: true,
-      vlm: { enabled: false, model: 'glm-4v', apiUrl: 'https://你的模型服务地址/v1/chat/completions', timeout: 8 }
+      login: true
     },
     // 测试(默认环境)
     test: {
       baseURL: 'http://localhost:3000',
       browser: 'chromium',
-      login: true,
-      vlm: { enabled: false, model: 'glm-4v', apiUrl: 'https://你的模型服务地址/v1/chat/completions', timeout: 8 }
+      login: true
     },
     // 预发
     uat: {
       baseURL: 'http://uat.example.com',
       browser: 'chromium',
-      login: true,
-      vlm: { enabled: false, model: 'glm-4v', apiUrl: 'https://你的模型服务地址/v1/chat/completions', timeout: 8 }
+      login: true
     },
     // 生产:只读冒烟
     prod: {
       baseURL: 'http://example.com',
       browser: 'chromium',
-      login: false,
-      vlm: { enabled: false, model: 'glm-4v', apiUrl: 'https://你的模型服务地址/v1/chat/completions', timeout: 8 }
+      login: false
     }
   },
 

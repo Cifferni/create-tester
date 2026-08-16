@@ -166,6 +166,13 @@ function writeEnvFiles(target: string): void {
       '# 其他账号(可选):TESTER_USER_<账号大写> / TESTER_PASSWORD_<账号大写>',
       `# TESTER_USER_ADMIN=`,
       `# TESTER_PASSWORD_ADMIN=`,
+      '',
+      '# VLM 视觉兜底(可选,默认关):想用再填,见 README「给维护者·5」',
+      `TESTER_VLM_ENABLED=0`,
+      `TESTER_VLM_MODEL=`,
+      `TESTER_VLM_API_URL=`,
+      `TESTER_VLM_API_KEY=`,
+      `TESTER_VLM_TIMEOUT=8`,
       ''
     ].join('\n');
     fs.writeFileSync(file, content, 'utf8');
