@@ -220,9 +220,10 @@ function runMCP(): void {
       files: z.array(z.string()).optional().describe('要跑的 spec 文件列表,缺省跑全部'),
       headed: z.boolean().optional().describe('是否带界面执行,默认无头'),
       workers: z.number().optional().describe('并行 worker 数,缺省用 config;提速用(需用例彼此隔离,否则会互踩)'),
-      grep: z.string().optional().describe('只跑匹配的用例:传标签(如 @smoke)或标题关键字(如 登录),对应 Playwright --grep')
+      grep: z.string().optional().describe('只跑匹配的用例:传标签(如 @smoke)或标题关键字(如 登录),对应 Playwright --grep'),
+      env: z.string().optional().describe('环境名(如 test/uat/prod),命中 testerConfig.envs 表自动切到该环境地址;用户说"测试环境/预发环境"时传对应名字')
     },
-    async ({ files, headed, workers, grep }) => {
+    async ({ files, headed, workers, grep, env }) => {
       const list = files && files.length ? files : defaultSpecFiles();
       if (!list.length) return textResult(JSON.stringify({ error: '没有可运行的测试文件' }, null, 2));
       const root = projectRoot();
@@ -248,7 +249,7 @@ function runMCP(): void {
       } catch {
         // 忽略
       }
-      const { pid } = startPlaywrightTest(list, root, { headed, workers, grep });
+      const { pid } = startPlaywrightTest(list, root, { headed, workers, grep, env });
       return textResult(
         JSON.stringify(
           { status: 'running', pid, grep: grep || undefined, warning: warnings.length ? warnings : undefined, note: '测试在后台运行,用 tester_status/tester_failures 轮询结果(未找到报告=仍在跑)' },
@@ -266,9 +267,10 @@ function runMCP(): void {
       files: z.array(z.string()).optional().describe('要跑的 spec 文件列表,缺省跑全部'),
       grep: z.string().optional().describe('只跑匹配的用例(标签或标题关键字)'),
       max_retries: z.number().optional().describe('定位/网络/超时失败最多自动重试几轮,默认 2,上限 4'),
-      timeout: z.number().optional().describe('每轮超时秒数,默认 180')
+      timeout: z.number().optional().describe('每轮超时秒数,默认 180'),
+      env: z.string().optional().describe('环境名(如 test/uat/prod),命中 testerConfig.envs 表自动切到该环境地址')
     },
-    async ({ files, grep, max_retries, timeout }) => {
+    async ({ files, grep, max_retries, timeout, env }) => {
       const list = files && files.length ? files : defaultSpecFiles();
       if (!list.length) return textResult(JSON.stringify({ error: '没有可运行的测试文件' }, null, 2));
       const root = projectRoot();
@@ -287,7 +289,8 @@ function runMCP(): void {
       } catch {}
       const { failures, attempts } = await runWithRetry(list, root, {
         maxRounds: Math.min(Math.max(max_retries ?? 2, 0), 4),
-        timeoutMs: (timeout ?? 180) * 1000
+        timeoutMs: (timeout ?? 180) * 1000,
+        env
       });
       const byCat = new Map<string, number>();
       for (const f of failures) {
@@ -421,9 +424,10 @@ function runMCP(): void {
     {
       headed: z.boolean().optional().describe('是否带界面执行,默认无头'),
       workers: z.number().optional().describe('并行 worker 数,缺省用 config;提速用(需用例隔离)'),
-      grep: z.string().optional().describe('只重跑匹配的用例(标签或标题关键字)')
+      grep: z.string().optional().describe('只重跑匹配的用例(标签或标题关键字)'),
+      env: z.string().optional().describe('环境名(如 test/uat/prod),命中 testerConfig.envs 表自动切到该环境地址;与上次跑的环境保持一致')
     },
-    async ({ headed, workers, grep }) => {
+    async ({ headed, workers, grep, env }) => {
       const report = path.join(projectRoot(), 'test-result', 'test-results.json');
       if (!fs.existsSync(report)) return textResult('未找到上次报告:test-result/test-results.json(先跑一次 tester_run_tests)');
       const files = failedSpecFiles(fs.readFileSync(report, 'utf8'));
@@ -439,7 +443,7 @@ function runMCP(): void {
       try {
         fs.rmSync(path.join(projectRoot(), 'test-result', 'test-results.json'), { force: true });
       } catch {}
-      const { pid } = startPlaywrightTest(files, projectRoot(), { headed, workers, grep });
+      const { pid } = startPlaywrightTest(files, projectRoot(), { headed, workers, grep, env });
       return textResult(
         JSON.stringify(
           { status: 'running', pid, reran: files.length, grep: grep || undefined, note: '只重跑上次失败的 spec,用 tester_status/tester_failures 轮询' },

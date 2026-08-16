@@ -19,10 +19,10 @@ function playwrightTestCli(cwd?: string): string | null {
   }
 }
 
-function spawnCapture(args: string[], cwd: string): Promise<{ code: number | null; stdout: string; stderr: string }> {
+function spawnCapture(args: string[], cwd: string, env?: NodeJS.ProcessEnv): Promise<{ code: number | null; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     // windowsHide:避免 Windows 每次跑测试弹控制台窗口
-    const child = spawn(process.execPath, args, { cwd, windowsHide: true });
+    const child = spawn(process.execPath, args, { cwd, env, windowsHide: true });
     let stdout = '';
     let stderr = '';
     child.stdout.on('data', (d) => (stdout += d));
@@ -36,7 +36,7 @@ function spawnCapture(args: string[], cwd: string): Promise<{ code: number | nul
 export function startPlaywrightTest(
   files: string[],
   cwd: string,
-  opts: { headed?: boolean; workers?: number; grep?: string } = {}
+  opts: { headed?: boolean; workers?: number; grep?: string; env?: string } = {}
 ): { pid: number } {
   const cli = playwrightTestCli(cwd);
   if (!cli) throw new Error('未找到 @playwright/test,请先 npm install');
@@ -46,9 +46,12 @@ export function startPlaywrightTest(
   if (opts.headed) args.push('--headed');
   if (opts.grep) args.push(`--grep=${opts.grep}`);
   args.push(...files);
+  // env 注入:TESTER_ENV 让 playwright.config.ts 从 testerConfig.envs 表解析对应 BASE_URL
+  const childEnv = { ...process.env };
+  if (opts.env && !process.env.BASE_URL) childEnv.TESTER_ENV = opts.env;
   // detached + stdio ignore:不受 server 生命周期影响,也不会因管道满而阻塞
   // windowsHide:Windows 上 detached 默认会新建一个控制台窗口,藏掉它(否则每次 run_tests 都弹一个终端)
-  const child = spawn(process.execPath, args, { cwd, detached: true, stdio: 'ignore', windowsHide: true });
+  const child = spawn(process.execPath, args, { cwd, env: childEnv, detached: true, stdio: 'ignore', windowsHide: true });
   child.unref();
   return { pid: child.pid ?? 0 };
 }
@@ -57,7 +60,7 @@ export function startPlaywrightTest(
 export async function runPlaywrightTest(
   files: string[],
   cwd: string,
-  opts: { timeoutMs?: number; headed?: boolean; workers?: number; grep?: string } = {}
+  opts: { timeoutMs?: number; headed?: boolean; workers?: number; grep?: string; env?: string } = {}
 ): Promise<{ failures: TestFailure[]; raw: string }> {
   const cli = playwrightTestCli(cwd);
   if (!cli) throw new Error('未找到 @playwright/test,请先 npm install');
@@ -73,11 +76,13 @@ export async function runPlaywrightTest(
   if (opts.headed) args.push('--headed');
   if (opts.grep) args.push(`--grep=${opts.grep}`);
   args.push(...files);
+  const env = { ...process.env };
+  if (opts.env && !process.env.BASE_URL) env.TESTER_ENV = opts.env;
   const timeoutMs = opts.timeoutMs ?? 180000;
   const timer = setTimeout(() => {
     // 超时:由调用方兜底(测试可能仍在跑)
   }, timeoutMs);
-  const { stdout } = await spawnCapture(args, cwd);
+  const { stdout } = await spawnCapture(args, cwd, env);
   clearTimeout(timer);
   // 结果来源:优先读 config 生成的 test-result/test-results.json(config 没配 json reporter 时退回 stdout)
   const reportFile = path.join(cwd, 'test-result', 'test-results.json');
@@ -228,6 +233,7 @@ export async function runPlaywrightTestPassthrough(files: string[], cwd: string,
 export interface RetryOptions {
   maxRounds?: number; // 最多重试几轮,默认 2
   timeoutMs?: number; // 单轮超时,默认 180s
+  env?: string; // 环境名,注入 TESTER_ENV 让 config 解析对应 BASE_URL
 }
 
 export async function runWithRetry(
@@ -244,11 +250,11 @@ export async function runWithRetry(
   let attempts = 0;
   for (let round = 0; round <= maxRounds; round++) {
     attempts++;
-    const { failures } = await runPlaywrightTest(files, cwd, { timeoutMs });
+    const { failures } = await runPlaywrightTest(files, cwd, { timeoutMs, env: opts.env });
     const retryable = failures.filter((f) => RETRYABLE.includes(f.category ?? '其他'));
     if (!retryable.length) return { failures, attempts }; // 没有可重试的失败,结束
     // 还有可重试失败且未到上限:整批重跑(定位/网络/超时多为偶发,整批重跑成本可接受)
   }
-  const last = await runPlaywrightTest(files, cwd, { timeoutMs });
+  const last = await runPlaywrightTest(files, cwd, { timeoutMs, env: opts.env });
   return { failures: last.failures, attempts: attempts + 1 };
 }
