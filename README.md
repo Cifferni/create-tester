@@ -138,8 +138,18 @@ tester run --grep @smoke          # 只跑冒烟标签
   ```bash
   npx create-tester@latest upgrade
   ```
-  执行 **`npm install @create-tester/core@latest`**(依赖版本管理),更新内核;**不覆盖任何你改过的文件**(`_login.ts`、`auth.setup.ts`、`playwright.config.ts`、specs、`env-reset.cjs`);**缺的新模板文件会补齐**(如 `tester.config.ts`、`plugin/vlm.example.cjs`、`ci.example.yml`)。升级后重启 AI 会话即可。
-- **0.7.1 起配置独立为 `tester.config.ts`**:老工程升级后,`playwright.config.ts` 若还写旧版 BASE_URL 解析(无 `defaultEnv` 兜底),想让"不指定环境时自动用默认环境地址"生效,把它那行改成新版即可:
+
+**`upgrade` 会做什么 / 不做什么**(放心跑):
+
+| 类别 | 文件 | 行为 |
+| --- | --- | --- |
+| 引擎更新 | `@create-tester/core` 依赖 | 升级到最新版 |
+| **补齐新模板文件** | `tester.config.ts` / `plugin/vlm.example.cjs` / `ci.example.yml` | **缺失时自动补**(新版才有的文件) |
+| **绝不覆盖** | `_login.ts` / `auth.setup.ts` / `playwright.config.ts` / `tests/**`(specs)/ `mcp/env-reset.cjs` / `.mcp.json` / `tester.config.ts` | 你改过的文件原样保留 |
+
+> 原则:**只补缺失的,绝不覆盖已有的**。已存在的文件(哪怕是你从没改过的)也一律不动,避免误伤。升级后重启 AI 会话即可。
+
+**手动迁移一步(0.7.1 起配置独立为 `tester.config.ts`)**:老工程升级后,`playwright.config.ts` 若还写旧版 BASE_URL 解析(无 `defaultEnv` 兜底),想让"不指定环境时自动用默认环境地址"生效,把那行改成新版:
   ```ts
   // 旧:const BASE_URL = process.env.BASE_URL || (ENVS[ENV] || 'http://localhost:3000');
   // 新:const BASE_URL = process.env.BASE_URL || (ENV ? ENVS[ENV] : ENVS[DEFAULT_ENV]) || 'http://localhost:3000';

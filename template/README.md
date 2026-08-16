@@ -162,6 +162,14 @@ tester run --grep @smoke         # 只跑冒烟标签
 ```
 `--env` 的名字对应 `tester.config.ts` 里 `envs` 表;设了 `BASE_URL` 时以它为准。
 
+**3.5 升级到新引擎**
+```bash
+npx create-tester@latest upgrade
+```
+- **补齐新模板文件**(缺失才补):`tester.config.ts` / `plugin/vlm.example.cjs` / `ci.example.yml`
+- **绝不覆盖**:你改过的任何文件(`_login.ts`、`auth.setup.ts`、`playwright.config.ts`、specs、`env-reset.cjs` 等)原样保留
+- 升级后重启 AI 会话即可
+
 **4. CI / 定时回归**
 - `tester run` 退出码按结果(0=全通过,1=有失败),流水线直接判红
 - 模板自带 `ci.example.yml`(GitHub Actions 示例:装依赖 → 装浏览器 → 跑回归 → 传报告),复制为 `.github/workflows/regression.yml` 并配好 Secrets 即可;Jenkins 同理,核心就一句 `npx tester run --workers N`

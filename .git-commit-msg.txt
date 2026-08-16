@@ -1,5 +1,1 @@
-feat: upgrade 补齐新版模板文件——老工程升级后自动补 tester.config.ts/vlm.example.cjs/ci.example.yml(不覆盖已有);README 说明 defaultEnv 迁移
-
-- 根因: 0.7.1 引入 tester.config.ts 独立配置,但老工程 upgrade 只升依赖,缺新文件导致新功能(defaultEnv)拿不到
-- 修复: upgrade 增加 fillMissingTemplateFiles——只补缺失的新模板文件,绝不覆盖已存在(用户改过)的文件;验证 playwright.config.ts 不被覆盖
-- README: 升级章节补 0.7.1 配置迁移说明(BASE_URL 行升级 / testerConfig 挪到 tester.config.ts)
+docs: README/template README 升级章节加「补齐/不覆盖」行为说明表——明确哪些文件缺失时补、哪些绝不碰
