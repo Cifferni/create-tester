@@ -148,12 +148,27 @@ function writeEnvFiles(target: string): void {
   const text = fs.readFileSync(cfgFile, 'utf8');
   const envNames: string[] = [];
   // 粗解析 tester.config.ts 的 envs: { key: {...} } 里的 key(dev/test/uat/prod)
-  const block = text.match(/envs:\s*\{([\s\S]*?)\n\s*\},/);
-  if (block) {
-    for (const line of block[1].split('\n')) {
-      const m = line.match(/^\s{2,}([A-Za-z0-9_-]+)\s*:\s*\{/);
-      if (m) envNames.push(m[1]);
+  // 用括号计数定位整个 envs 块,只取缩进最浅的顶层键,忽略环境内部嵌套键(vlm 等),避免误生成 .env.vlm
+  const start = text.indexOf('envs:');
+  if (start >= 0) {
+    const open = text.indexOf('{', start);
+    let depth = 0;
+    let end = open;
+    for (; end < text.length; end++) {
+      if (text[end] === '{') depth++;
+      else if (text[end] === '}') {
+        depth--;
+        if (depth === 0) { end++; break; }
+      }
     }
+    const block = text.slice(open + 1, end);
+    const candidates: { name: string; indent: number }[] = [];
+    for (const line of block.split('\n')) {
+      const m = line.match(/^(\s*)([A-Za-z0-9_-]+)\s*:\s*\{/);
+      if (m) candidates.push({ name: m[2], indent: m[1].length });
+    }
+    const minIndent = candidates.length ? Math.min(...candidates.map((c) => c.indent)) : -1;
+    for (const c of candidates) if (c.indent === minIndent) envNames.push(c.name);
   }
   for (const env of envNames) {
     const file = path.join(target, `.env.${env}`);
