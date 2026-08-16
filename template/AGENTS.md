@@ -2,12 +2,12 @@
 
 ## 核心纪律(硬性,先过一遍)
 
-1. 页面操作用**官方 playwright MCP**(`browser_*`),跑测试/管用例用**tester MCP**。禁止裸 Playwright 脚本、临时 spec、抓前端源码(`/src/**`)。
-2. 每个用例**必须有业务断言**,禁止只点不验;断言依据=用例文档"预期",不是页面现状(不符就报告,不改断言迁就)。**无断言的 test 块会被纪律预检代码拦截,无需自觉遵守。**
-3. **禁止 `waitForTimeout`/终端 sleep**:要等就用 `waitForVisible/Clickable/Text/URL`;等测试结果用 `tester_run_and_wait`(同步+自动重试)或 `tester_wait_result`。**这些违规会被 tester_run_tests 的纪律预检代码拦截,无需自觉遵守。**
-4. 定位优先级:`getByTestId` > `getByRole+name` > CSS/class > `getByText`(仅兜底且唯一)。
-5. 快照 ref 过期即失效:操作报 "Ref not found" 一律**先重新 `browser_snapshot`**,再基于新 ref 操作,别拿旧 ref 硬试。
-6. 禁止 `browser_run_code_unsafe` 手写复杂 CSS(如 `svg path[d^=...]`、`nth-child`、依赖 UI 库 class 等脆选择器):定位用 `browser_snapshot`/`browser_find` 拿 ref 或可访问名。**脆选择器会被纪律预检代码警告。**
+1. 页面操作用**官方 playwright MCP**(`browser_*`),跑测试/管用例用**tester MCP**。禁止裸 Playwright 脚本、抓前端源码(`/src/**`)。
+2. 每个用例**必须有业务断言**,禁止只点不验;断言依据=用例文档"预期",不是页面现状(不符就报告,不改断言迁就)。
+3. 定位优先级:`getByTestId` > `getByRole+name` > CSS/class > `getByText`(仅兜底且唯一)。
+4. 快照 ref 过期即失效:操作报 "Ref not found" 一律**先重新 `browser_snapshot`**,再基于新 ref 操作,别拿旧 ref 硬试。
+
+> **以下由代码强制,不用记细节**(tester_run_tests 跑前预检拦下,报错会告诉你具体怎么改):禁 `waitForTimeout`/终端 sleep;无断言的 test 块;脆选择器(svg path / nth-child / UI 库 class);手写临时 spec。**违规会被拦截或警告,无需自觉遵守。**
 
 ## 工具(两套 MCP)
 
@@ -39,8 +39,7 @@
 
 ## 省时间 / 省 token
 
-- 探查用 `browser_snapshot`/`browser_find`(大页面先对容器 target 精准看),禁止临时 spec。
-- 改完 `tester_retry_failed` 单点;先探查再改,别反复跑试错。
+- 探查用 `browser_snapshot`/`browser_find`(大页面先对容器 target 精准看),别反复跑试错。
 - 选择性执行:`tag` + `tester_run_tests {grep:'@smoke'}` 或 `npm run test -- --grep @smoke`。
 - 环境:先构造(`tester_env_reset`/清理),构造不了才 `test.skip`+说明;环境限制不算 bug,skip 即可。
 - 看结果可选 `tester view`(只读 Web 面板)。

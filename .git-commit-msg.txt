@@ -1,7 +1,6 @@
-feat: 纪律代码化第 2 批——断言强制(只点不验致命拦)+ 临时 spec 警告 + 脆选择器扩展
+docs: AGENTS.md 精简——代码已强制的纪律(断言/延时/脆选择器/临时spec)从细节删除,合并为一句"代码兜底"说明
 
-- 断言强制: scanDiscipline 按 test() 块切分,块内无 expect/expectApi/toHave* 即"只点不验"致命拦跑;beforeEach/afterEach 不算用例
-- 临时 spec: tester_generate_spec 生成的 spec 加 @tester-generated 标记,checkSpecQuality 对无标记 .spec 给警告
-- 脆选择器扩展: nth-child/nth-of-type、classList 断言、getByText 当首选等新增警告规则
-- AGENTS.md: 断言强制与脆选择器标注"已被代码拦截",不再依赖自觉
-- 验证: 有断言/接口断言/beforeEach 边界用例均正确,只点不验被致命拦截
+- 核心纪律 6 条 → 4 条(只留无法代码化的:双MCP分工/断言语义/定位优先级/ref过期)
+- 被代码拦截的:waitForTimeout、终端sleep、无断言、脆选择器、临时spec → 收敛成一条引用说明
+- 删重复:第1条"禁止临时spec"、省token节重复的"禁止临时spec/先探查再改"
+- 50 行 → 45 行
